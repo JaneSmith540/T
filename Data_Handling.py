@@ -120,7 +120,46 @@ def get_all_securities(date=None):
     # 添加返回语句
     return stock_codes
 
+def get_weight(date=None):
+    """
+    获取中证500成分股的股票代码及其权重
+    :param date: 日期（可选，若为None则返回所有日期的权重数据）
+    :return: DataFrame，包含'ts_code'（股票代码）和'weight'（权重）列
+    """
+    import pandas as pd
+    import os
 
+    # 数据文件路径
+    file_path = r"D:\read\task\中证500成分股,单一股票数据.csv"
+
+    # 检查文件是否存在
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"数据文件不存在: {file_path}")
+
+    # 读取CSV文件
+    df = pd.read_csv(file_path, dtype=str)
+
+    # 转换权重列为数值类型
+    if 'weight' in df.columns:
+        df['weight'] = pd.to_numeric(df['weight'], errors='coerce')
+
+    # 转换日期列格式
+    if 'trade_date' in df.columns:
+        df['trade_date'] = pd.to_datetime(df['trade_date'], errors='coerce')
+
+    # 按日期筛选（如果指定了日期）
+    if date is not None:
+        target_date = pd.to_datetime(date)
+        df = df[df['trade_date'] == target_date]
+        if df.empty:
+            raise ValueError(f"指定日期 {date} 没有对应的权重数据")
+
+    # 提取需要的列并返回（重命名股票代码列为'ts_code'以保持一致性）
+    result = df[['con_code', 'weight']].rename(columns={'con_code': 'ts_code'})
+
+    # 去除无效数据
+    result = result.dropna(subset=['ts_code', 'weight'])
+    return result
 """
 修改上面的先
 """
