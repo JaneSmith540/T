@@ -10,7 +10,9 @@ class Log:
     def error(msg):
         print(f"[ERROR] {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} - {msg}")
 
+    @staticmethod
+    def warning(msg):
+        print(f"[WARNING] {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} - {msg}")
+
 
 log = Log()  # 实例化log，供策略调用
-
-

@@ -1,8 +1,8 @@
+# file:D:\read\task\Data_Handling.py
 import pandas as pd
 import os
-from datetime import datetime
 import numpy as np
-
+from datetime import datetime
 
 
 class StockData:
@@ -13,210 +13,162 @@ class StockData:
         self.Loprc = None  # 最低价
         self.Clsprc = None  # 收盘价
         self.Trdsta = None  # 交易状态
-        # 1 = 正常交易，2 = ST，3＝*ST，4＝S（2006年10月9日及之后股改未完成），5＝SST，6＝S * ST，7 = G（2006年10月9日之前已完成股改），8 = GST，9 = G * ST，10 = U（2006年10月9日之前股改未完成），11 = UST，12 = U * ST，13 = N，14 = NST，15 = N * ST，16 = PT
         self.LimitDown = None  # 跌停价
         self.LimitUp = None  # 涨停价
         self.Dnshrtrd = None  # 交易量
         self.Dsmvosd = None  # 流通市值
-"""
-下面的很合我意了
-"""
-
-def get_price(security, start_date=None, end_date=None, frequency='daily', fields=None,
-              skip_paused=False, count=None, panel=True, fill_paused=True):
-    """
-    获取历史数据，可查询多个标的多个数据字段，返回数据格式为 DataFrame
-    """
-    # 数据文件路径
-    file_path = r"D:\read\task\机器学习数据.pkl"
-
-    # 检查文件是否存在
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-
-    # 读取pkl文件
-    df = pd.read_pickle(file_path)
-
-    # 转换数值字段为适当类型
-    numeric_fields = ['open', 'high', 'low', 'close', 'pre_close',
-                      'change', 'pct_chg', 'vol', 'amount']
-    for field in numeric_fields:
-        if field in df.columns:
-            try:
-                df[field] = pd.to_numeric(df[field])
-            except (ValueError, TypeError):
-                pass
-
-    # 转换日期列的格式
-    if 'trade_date' in df.columns:
-        # 假设日期是整数格式如20180102，转换为datetime
-        df['trade_date'] = pd.to_datetime(df['trade_date'], format='%Y%m%d')
-
-    # 处理股票代码
-    if 'ts_code' in df.columns:
-        # 确保股票代码是字符串格式
-        df['ts_code'] = df['ts_code'].astype(str)
-
-    # 过滤股票代码
-    if isinstance(security, list):
-        # 多个股票代码
-        securities = [str(s) for s in security]
-        df = df[df['ts_code'].isin(securities)]
-    else:
-        # 单个股票代码
-        security_str = str(security)
-        df = df[df['ts_code'] == security_str]
-
-    # 过滤日期范围
-    if start_date:
-        start_date = pd.to_datetime(start_date)
-        df = df[df['trade_date'] >= start_date]
-
-    if end_date:
-        end_date = pd.to_datetime(end_date)
-        df = df[df['trade_date'] <= end_date]
-
-    # 选择需要的字段
-    available_fields = ['ts_code', 'trade_date', 'open', 'high', 'low', 'close',
-                        'pre_close', 'change', 'pct_chg', 'vol', 'amount']
-
-    if fields:
-        # 检查字段是否有效
-        invalid_fields = [f for f in fields if f not in available_fields]
-        if invalid_fields:
-            raise ValueError(f"无效的字段: {invalid_fields}，可用字段: {available_fields}")
-
-        # 确保保留股票代码和日期
-        selected_fields = fields.copy()
-        if 'ts_code' not in selected_fields:
-            selected_fields.insert(0, 'ts_code')
-        if 'trade_date' not in selected_fields:
-            selected_fields.insert(1, 'trade_date')
-
-        df = df[selected_fields]
-
-    # 按日期排序
-    if 'trade_date' in df.columns:
-        df = df.sort_values('trade_date')
-
-    # 限制返回的记录数量
-    if count and count > 0:
-        df = df.tail(count)
-
-    return df
-
-
-# 用来获取标的列表
-def get_all_securities(date=None):
-    import pandas as pd
-
-    # 读取中证500成分股数据
-    # 数据文件路径
-    file_path = r"D:\read\task\中证500成分股,单一股票数据.csv"
-
-    df = pd.read_csv(file_path, dtype=str)
-    stock_codes = df['con_code'].unique()
-    print(stock_codes)
-    # 添加返回语句
-    return stock_codes
-
-def get_weight(date=None):
-    """
-    获取中证500成分股的股票代码及其权重
-    :param date: 日期（可选，若为None则返回所有日期的权重数据）
-    :return: DataFrame，包含'ts_code'（股票代码）和'weight'（权重）列
-    """
-    import pandas as pd
-    import os
-
-    # 数据文件路径
-    file_path = r"D:\read\task\中证500成分股,单一股票数据.csv"
-
-    # 检查文件是否存在
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-
-    # 读取CSV文件
-    df = pd.read_csv(file_path, dtype=str)
-
-    # 转换权重列为数值类型
-    if 'weight' in df.columns:
-        df['weight'] = pd.to_numeric(df['weight'], errors='coerce')
-
-    # 转换日期列格式
-    if 'trade_date' in df.columns:
-        df['trade_date'] = pd.to_datetime(df['trade_date'], errors='coerce')
-
-    # 按日期筛选（如果指定了日期）
-    if date is not None:
-        target_date = pd.to_datetime(date)
-        df = df[df['trade_date'] == target_date]
-        if df.empty:
-            raise ValueError(f"指定日期 {date} 没有对应的权重数据")
-
-    # 提取需要的列并返回（重命名股票代码列为'ts_code'以保持一致性）
-    result = df[['con_code', 'weight']].rename(columns={'con_code': 'ts_code'})
-
-    # 去除无效数据
-    result = result.dropna(subset=['ts_code', 'weight'])
-    return result
-"""
-修改上面的先
-"""
 
 
 class DataHandler:
     def __init__(self, file_path):
         self.file_path = file_path
-        self.stock_data = self._load_data()
-        self.dates = pd.DatetimeIndex(self.stock_data.index.unique(level=0)).sort_values()
+        self.all_stock_data = None  # 预加载的所有股票数据
+        self.weights_data = None  # 预加载的权重数据
+        self.dates = None  # 所有交易日
+        self._preload_data()  # 初始化时预加载所有数据
+
+    def _preload_data(self):
+        """预加载所有股票数据和权重数据到内存"""
+        # 加载股票价格数据
+        if not os.path.exists(self.file_path):
+            raise FileNotFoundError(f"数据文件不存在: {self.file_path}")
+
+        # 读取并预处理股票数据
+        df = pd.read_pickle(self.file_path)
+
+        # 处理日期列
+        date_column = 'trade_date'
+        df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
+        df = df.dropna(subset=[date_column])
+
+        # 处理股票代码（统一格式为xxx.SH/xxx.SZ）
+        code_column = 'ts_code'
+        df[code_column] = df[code_column].astype(str)
+
+        # 确保价格字段为数值类型
+        price_fields = ['open', 'high', 'low', 'close']
+        for field in price_fields:
+            df[field] = pd.to_numeric(df[field], errors='coerce')
+
+        # 设置复合索引（日期+股票代码），加速查询
+        self.all_stock_data = df.set_index(['trade_date', 'ts_code']).sort_index()
+
+        # 提取所有交易日
+        self.dates = pd.DatetimeIndex(self.all_stock_data.index.unique(level=0)).sort_values()
+
+        # 预加载权重数据
+        self._preload_weights()
+
+    def _preload_weights(self):
+        """预加载中证500成分股权重数据"""
+        weight_file_path = r"D:\read\task\中证500成分股,单一股票数据.csv"
+        if os.path.exists(weight_file_path):
+            try:
+                df = pd.read_csv(weight_file_path, dtype=str)
+                # 假设权重列名为'weight'，股票代码列名为'con_code'
+                df['weight'] = pd.to_numeric(df['weight'], errors='coerce')
+                df = df.dropna(subset=['con_code', 'weight'])
+                # 转换股票代码格式与价格数据一致
+                df['con_code'] = df['con_code'].astype(str)
+                self.weights_data = df.set_index('con_code')['weight'].to_dict()
+            except Exception as e:
+                print(f"权重数据加载警告: {str(e)}")
+                self.weights_data = {}
+        else:
+            self.weights_data = {}
 
     def get_previous_trading_day(self, current_date):
         """获取当前日期的上一个有效交易日"""
         current_date = pd.to_datetime(current_date)
-        # 获取所有小于当前日期的交易日并排序
         previous_days = self.dates[self.dates < current_date]
-        if len(previous_days) == 0:
-            return None  # 没有上一个交易日
-        return previous_days[-1]  # 返回最近的一个交易日
+        return previous_days[-1] if len(previous_days) > 0 else None
 
-    def _load_data(self):
-        """加载并预处理pickle数据"""
-        df = pd.read_pickle(self.file_path)
-
-        date_column = 'trade_date'
-        df[date_column] = pd.to_datetime(df[date_column], errors='coerce')  # 强制转换，错误值设为NaT
-
-        invalid_dates = df[date_column].isna().sum()
-        if invalid_dates > 0:
-            print(f"警告：检测到{invalid_dates}条无效日期记录，已自动删除")
-        df = df.dropna(subset=[date_column])
-
-        # 处理股票代码（假设pickle中股票代码字段为'ts_code'，如'000009.SZ'）
-        # 提取纯数字部分并补前导零至6位（去除后缀如.SZ/.SH）
-        code_column = 'ts_code'
-        df[code_column] = df[code_column].astype(str).str.split('.').str[0].str.zfill(6)
-
-        column_mapping = {
-            'open': 'open',
-            'high': 'high',
-            'low': 'low',
-            'close': 'close'
-        }
-        df.rename(columns=column_mapping, inplace=True)
-
-        # 设置索引（日期+股票代码）
-        return df.set_index([date_column, code_column])
     def get_stock_data(self):
-        """回测引擎需要的：获取所有股票数据（用于提取日期列表）"""
-        df = self.stock_data.reset_index()  # 此时列：trade_date, ts_code, close, open...
-        return df.set_index('trade_date')  # 单索引：trade_date（日期）
+        """获取所有股票数据（用于提取日期列表）"""
+        return self.all_stock_data.reset_index().set_index('trade_date')
+
     def get_single_day_data(self, date):
-        """回测引擎需要的：获取某一天所有股票的收盘价"""
+        """获取某一天所有股票的收盘价"""
         date = pd.to_datetime(date)
-        if date not in self.stock_data.index.levels[0]:
-            return pd.Series([np.nan], index=[None])  # 无数据日期返回NaN
-        day_data = self.stock_data.loc[date]
-        return day_data['close']  # 返回 Series：index=股票代码，value=收盘价
+        try:
+            return self.all_stock_data.loc[date]['close']
+        except KeyError:
+            return pd.Series([np.nan], index=[None])
+
+    def get_price(self, security, start_date=None, end_date=None, fields=None, count=None):
+        """
+        从内存中查询股票价格数据
+        :param security: 股票代码
+        :param start_date: 开始日期
+        :param end_date: 结束日期
+        :param fields: 需要的字段列表
+        :param count: 返回的记录数量
+        :return: 价格数据DataFrame
+        """
+        security = str(security)
+        start_date = pd.to_datetime(start_date) if start_date else None
+        end_date = pd.to_datetime(end_date) if end_date else None
+
+        # 基础查询条件：股票代码匹配
+        mask = self.all_stock_data.index.get_level_values('ts_code') == security
+        filtered = self.all_stock_data[mask]
+
+        # 日期过滤
+        if start_date:
+            filtered = filtered[filtered.index.get_level_values('trade_date') >= start_date]
+        if end_date:
+            filtered = filtered[filtered.index.get_level_values('trade_date') <= end_date]
+
+        # 字段过滤
+        available_fields = ['open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']
+        if fields:
+            valid_fields = [f for f in fields if f in available_fields]
+            filtered = filtered[valid_fields]
+
+        # 限制返回数量
+        if count and count > 0:
+            filtered = filtered.tail(count)
+
+        # 重置索引为日期，便于策略使用
+        return filtered.reset_index(level='ts_code', drop=True)
+
+    def get_weight(self):
+        """获取预加载的权重数据"""
+        if not self.weights_data:
+            self._preload_weights()
+        # 转换为DataFrame格式返回
+        return pd.DataFrame(list(self.weights_data.items()), columns=['ts_code', 'weight'])
 
 
+# 全局数据处理器实例，避免重复加载
+_data_handler_instance = None
+
+
+def get_data_handler(file_path=None):
+    """获取全局数据处理器实例"""
+    global _data_handler_instance
+    if _data_handler_instance is None and file_path:
+        _data_handler_instance = DataHandler(file_path)
+    return _data_handler_instance
+
+
+# 对外提供的查询接口，内部使用全局数据处理器
+def get_price(security, start_date=None, end_date=None, fields=None, count=None):
+    dh = get_data_handler()
+    if dh:
+        return dh.get_price(security, start_date, end_date, fields, count)
+    raise RuntimeError("数据处理器未初始化，请先创建DataHandler实例")
+
+
+def get_weight():
+    dh = get_data_handler()
+    if dh:
+        return dh.get_weight()
+    raise RuntimeError("数据处理器未初始化，请先创建DataHandler实例")
+
+
+def get_all_securities(date=None):
+    dh = get_data_handler()
+    if dh and dh.weights_data:
+        return list(dh.weights_data.keys())
+    return []
