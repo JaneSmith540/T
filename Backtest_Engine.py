@@ -4,6 +4,12 @@ import numpy as np
 from Performance_Analysis import PerformanceAnalysis
 from Visualization import BacktestVisualization
 from tqdm import tqdm
+import logging  # 新增：用于日志输出
+
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
+
 
 # 账户类
 class Account:
@@ -74,11 +80,18 @@ class Account:
         position_value = 0
         for stock_code, amount in self.positions.items():
             if stock_code in stock_prices:
-                position_value += stock_prices[stock_code] * amount
+                price = stock_prices[stock_code]
+                value = price * amount
+                position_value += value
+                # 新增：打印每日持仓市值明细（调试用）
+                log.debug(f"[{date}] 持仓 {stock_code}：价格={price:.2f}，数量={amount}，市值={value:.2f}")
+            else:
+                log.warning(f"[{date}] 未获取到 {stock_code} 的价格数据，无法计算该股票市值")
 
         total = self.cash + position_value
         self.total_assets.append(total)
         self.dates.append(date)
+        log.info(f"[{date}] 总资产：{total:.2f}（现金：{self.cash:.2f}，持仓市值：{position_value:.2f}）")
         return total
 
 
@@ -95,7 +108,7 @@ class BacktestEngine:
         self.data_handler = data_handler
         self.strategy_class = strategy_class
         self.account = Account(initial_cash)
-        self.max_stock_holdings = max_stock_holdings  # 新增：最大持股数量限制
+        self.max_stock_holdings = max_stock_holdings  # 最大持股数量限制
 
         stock_data = self.data_handler.get_stock_data()
         unique_dates = stock_data.index.unique()
@@ -112,7 +125,7 @@ class BacktestEngine:
             'portfolio': {
                 'available_cash': self.account.cash,
                 'positions': self.account.positions,
-                'max_stock_holdings': self.max_stock_holdings  # 新增：将限制加入上下文
+                'max_stock_holdings': self.max_stock_holdings
             }
         }
 
@@ -122,7 +135,7 @@ class BacktestEngine:
         """检查是否达到最大持股数量限制"""
         if self.max_stock_holdings is None:
             return True  # 无限制时返回True表示可以买入
-        # 当前持股数量小于等于最大限制时返回True
+        # 当前持股数量小于最大限制时返回True
         return len(self.account.positions) < self.max_stock_holdings
 
     def run(self, start_date=None, end_date=None):
@@ -153,8 +166,7 @@ class BacktestEngine:
         print(f"回测开始，开始日期: {trade_dates[0].strftime('%Y-%m-%d')}")
         print(f"结束日期: {trade_dates[-1].strftime('%Y-%m-%d')}")
 
-
-        # 在循环处理日期
+        # 循环处理每个交易日
         for date in tqdm(trade_dates, desc="回测进度"):
             self.context['current_dt'] = date
             self.context['portfolio']['available_cash'] = self.account.cash
@@ -165,14 +177,22 @@ class BacktestEngine:
             self.strategy.market_open(date)
             self.strategy.after_market_close(date)
 
+            # 获取当日所有股票的收盘价数据
             daily_stock_data = self.data_handler.get_single_day_data(date)
-            security = self.context.get('security')  # 使用get避免键不存在错误
 
-            if security and security in daily_stock_data:
-                stock_price = daily_stock_data[security]
-                self.account.calculate_total_assets(date, {security: stock_price})
-            else:
-                self.account.calculate_total_assets(date, {})
+            # 关键修复：获取当前所有持仓股票的代码
+            holding_stocks = self.account.positions.keys()
+
+            # 构建持仓股票的价格字典（仅包含持仓股票的当日收盘价）
+            stock_prices = {}
+            for stock_code in holding_stocks:
+                if stock_code in daily_stock_data.index:
+                    stock_prices[stock_code] = daily_stock_data.loc[stock_code]
+                else:
+                    log.warning(f"[{date}] 当日数据中不存在 {stock_code} 的价格，可能为停牌或未上市")
+
+            # 传递完整的持仓股票价格字典用于总资产计算
+            self.account.calculate_total_assets(date, stock_prices)
 
         print("回测完成!")
         self.performance = PerformanceAnalysis(self.account)

@@ -4,6 +4,13 @@ import os
 import numpy as np
 from datetime import datetime
 
+# 对外提供的查询接口，内部使用全局数据处理器
+def get_price(security, start_date=None, end_date=None, fields=None, count=None):
+    dh = get_data_handler()
+    if dh:
+        return dh.get_price(security, start_date, end_date, fields, count)
+    raise RuntimeError("数据处理器未初始化，请先创建DataHandler实例")
+
 
 class StockData:
     def __init__(self):

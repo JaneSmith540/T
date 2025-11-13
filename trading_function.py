@@ -267,36 +267,3 @@ class TradingFunctions:
         """计算最大可买入数量（考虑手续费）"""
         if price <= 0 or cash <= 0:
             return 0
-
-        # 估算手续费（买入佣金万分之三，最低5元）
-        max_amount = int(cash / price)
-        if max_amount == 0:
-            return 0
-
-        # 计算总成本（含手续费）
-        cost = price * max_amount
-        commission = max(0.0003 * cost, 5)
-        total_cost = cost + commission
-
-        # 确保总成本不超过可用现金
-        while total_cost > cash and max_amount > 0:
-            max_amount -= 1
-            cost = price * max_amount
-            commission = max(0.0003 * cost, 5)
-            total_cost = cost + commission
-
-        return max_amount
-
-    def _record_trade(self, order, fill_amount, fill_price, date):
-        """记录成交信息"""
-        trade = {
-            'trade_id': len(self.trades) + 1,
-            'order_id': order.order_id,
-            'security': order.security,
-            'amount': fill_amount,
-            'price': fill_price,
-            'date': date,
-            'side': 'buy' if fill_amount > 0 else 'sell'
-        }
-        self.trades.append(trade)
-        log.info(f"成交记录: {trade}")

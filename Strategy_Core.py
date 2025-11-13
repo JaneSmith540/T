@@ -4,6 +4,7 @@ import pandas as pd
 from Data_Handling import get_weight  # 导入获取权重的函数
 
 
+# 导入获取权重的函数
 class WeightBasedStrategy:
     def __init__(self, context):
         self.context = context

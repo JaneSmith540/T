@@ -90,7 +90,7 @@ class PerformanceAnalysis:
             return 0.0
 
         # 使用交易日数计算年化（假设一年252个交易日）
-        annualized_return = (1 + total_return) ** (252 / trading_days) - 1
+        annualized_return = (1 + total_return) **(252 / trading_days) - 1
         return annualized_return * 100  # 转换为百分比
 
     def get_sharpe_ratio(self, risk_free_rate=0.02):

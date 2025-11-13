@@ -133,4 +133,3 @@ class BacktestVisualization:
         print(f"\n交易统计:")
         print(f"买入次数: {buy_count}")
         print(f"卖出次数: {sell_count}")
-
