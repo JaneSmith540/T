@@ -70,8 +70,9 @@ class WeightBasedStrategy:
             # 计算该股票的配置金额（按权重比例分配总资金）
             allocation_ratio = weight / total_weight
             target_value = total_cash * allocation_ratio
+            """
             log.info(f"股票 {security} 权重：{weight}，配置金额：{target_value:.2f}")
-
+            """
             # 获取当前价格
             from Data_Handling import get_price
             current_data = get_price(security, count=1, fields=['close'], end_date=date)
@@ -92,10 +93,12 @@ class WeightBasedStrategy:
 
             # 执行购买
             success = account.buy(date, security, current_price, buy_amount)
+            """
             if success:
                 log.info(
                     f"✅ 买入 {security}，价格：{current_price:.2f}，数量：{buy_amount}，花费：{current_price * buy_amount:.2f}")
-            else:
+            """
+            if not success:
                 log.error(f"❌ 买入 {security} 失败")
 
         # 更新上下文现金信息
@@ -144,13 +147,15 @@ class WeightBasedStrategy:
                 current_price = current_data['close'].iloc[-1]
                 value = current_price * amount
                 position_value += value
+                """
                 log.info(
                     f"持仓情况: {security} - 数量: {amount}, 当前价格: {current_price:.2f}, 持仓市值: {value:.2f}")
-
+                """
         total_assets = cash + position_value
 
         log.info(f"账户状态 - 现金: {cash:.2f}, 持仓市值: {position_value:.2f}, 总资产: {total_assets:.2f}")
-
+        log.info('一天结束\n')
+"""
         # 打印当日交易记录
         if account.trade_history:
             today_trades = [trade for trade in account.trade_history
@@ -159,5 +164,4 @@ class WeightBasedStrategy:
                 log.info(f'当日成交记录：{trade}')
         else:
             log.info('当日无成交记录')
-
-        log.info('一天结束\n')
+"""

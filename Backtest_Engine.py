@@ -26,7 +26,7 @@ class Account:
         """买入股票"""
         cost = price * amount
         # 计算手续费（买入佣金万分之三，最低5元）
-        commission = max(0.0003 * cost, 5)
+        commission = 0                   # max(0.0003 * cost, 5)
         total_cost = cost + commission
 
         if self.cash >= total_cost:
@@ -55,8 +55,8 @@ class Account:
 
         revenue = price * amount
         # 计算手续费（卖出佣金万分之三+印花税千分之一，最低5元）
-        commission = max(0.0003 * revenue, 5)
-        tax = 0.001 * revenue
+        commission = 0                   # max(0.0003 * revenue, 5)
+        tax = 0            # 0.001 * revenue
         total_cost = commission + tax
 
         self.cash += revenue - total_cost
