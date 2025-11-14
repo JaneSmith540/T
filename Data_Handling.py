@@ -11,6 +11,12 @@ def get_price(security, start_date=None, end_date=None, fields=None, count=None)
         return dh.get_price(security, start_date, end_date, fields, count)
     raise RuntimeError("数据处理器未初始化，请先创建DataHandler实例")
 
+def get_index_price(start_date=None, end_date=None, fields=None, count=None):
+    """获取中证500指数价格数据的对外接口"""
+    dh = get_data_handler()
+    if dh:
+        return dh.get_index_price(start_date, end_date, fields)
+    raise RuntimeError("数据处理器未初始化，请先创建DataHandler实例")
 
 class StockData:
     def __init__(self):
@@ -145,6 +151,39 @@ class DataHandler:
             self._preload_weights()
         # 转换为DataFrame格式返回
         return pd.DataFrame(list(self.weights_data.items()), columns=['ts_code', 'weight'])
+
+    import pandas as pd
+    from datetime import datetime
+
+    def get_index_price(self, start_date, end_date, fields):
+        """
+        获取中证500指数价格数据
+
+        参数:
+        start_date: 开始日期 (YYYY-MM-DD格式)
+        end_date: 结束日期 (YYYY-MM-DD格式)
+        fields: 需要返回的字段列表
+        count: 返回的数据条数
+        """
+        # 读取CSV文件
+        df = pd.read_csv(r"C:\Users\chanpi\Desktop\task\中证500指数_201601-202506.csv")
+
+        # 确保日期列是datetime类型（假设日期列名为'date'）
+        # 如果列名不同，请相应调整
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+
+            # 按日期筛选数据
+            mask = (df['date'] >= pd.to_datetime(start_date)) & (df['date'] <= pd.to_datetime(end_date))
+            df = df.loc[mask]
+
+        # 如果指定了fields，只返回需要的字段
+        if fields and len(fields) > 0:
+            available_fields = [field for field in fields if field in df.columns]
+            if available_fields:
+                df = df[available_fields]
+
+        return df
 
 
 # 全局数据处理器实例，避免重复加载
