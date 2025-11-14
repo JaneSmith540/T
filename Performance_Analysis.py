@@ -2,120 +2,79 @@ import pandas as pd
 import numpy as np
 
 
+
+
 class PerformanceAnalysis:
     def __init__(self, account):
         self.account = account
-        self.strategy_returns = None  # 策略日收益率序列
-        self.cumulative_returns = None  # 累计收益率序列
-        self.cumulative_net_assets = None  # 累计净值序列
+        self.strategy_returns = None
+        self.cumulative_returns = None
+        self.cumulative_net_assets = None
 
-        # 初始化时计算基础收益率
-        self.calculate_returns()
-        self.calculate_cumulative_returns()
+        # 只有在有资产数据时才计算收益率
+        if len(self.account.total_assets) > 0:
+            self.calculate_returns()
+            self.calculate_cumulative_returns()
 
     def calculate_returns(self):
-        """计算策略日收益率 - 修复版本"""
-        if len(self.account.total_assets) == 0:
-            raise ValueError("没有可用的资产数据用于计算收益率")
+        """计算策略收益率"""
+        if len(self.account.total_assets) < 2:
+            self.strategy_returns = pd.Series(dtype='float64')
+            return
 
-        # 从账户总资产和日期生成收益率序列
-        total_assets_series = pd.Series(
+        # 使用总资产计算日收益率
+        self.strategy_returns = pd.Series(
             self.account.total_assets,
             index=self.account.dates
-        )
-
-        # 修复1：检查资产数据是否合理
-        if any(asset <= 0 for asset in self.account.total_assets):
-            print("警告：发现非正资产值，可能影响收益率计算")
-            # 将非正资产值替换为前一个有效值或小正数
-            total_assets_series = total_assets_series.replace(0, np.nan).fillna(method='ffill')
-            total_assets_series = total_assets_series.clip(lower=1e-6)  # 确保最小值为正
-
-        # 修复2：使用对数收益率，避免极端值
-        # 方法1：标准百分比变化（限制单日涨跌幅在合理范围内）
-        self.strategy_returns = total_assets_series.pct_change().fillna(0)
-
-        # 方法2：对数收益率（更稳定）
-        # self.strategy_returns = np.log(total_assets_series / total_assets_series.shift(1)).fillna(0)
-
-        # 修复3：限制单日涨跌幅在合理范围内（A股±10%）
-        self.strategy_returns = self.strategy_returns.clip(lower=-0.11, upper=0.11)
-
-        print(f"收益率统计: 最小值={self.strategy_returns.min():.4f}, 最大值={self.strategy_returns.max():.4f}")
-
-        return self.strategy_returns
+        ).pct_change().fillna(0)
 
     def calculate_cumulative_returns(self):
-        """计算累计收益率和累计净值 - 修复版本"""
+        """计算累计收益率"""
         if self.strategy_returns is None:
             self.calculate_returns()
 
-        try:
-            # 计算累计净值（从1开始）
-            self.cumulative_net_assets = (1 + self.strategy_returns).cumprod()
-
-            # 计算累计收益率
-            self.cumulative_returns = self.cumulative_net_assets - 1
-
-            print(
-                f"累计收益率统计: 最小值={self.cumulative_returns.min():.4f}, 最大值={self.cumulative_returns.max():.4f}")
-
-        except Exception as e:
-            print(f"累计收益率计算错误: {e}")
-            # 如果计算失败，创建安全的默认值
-            self.cumulative_net_assets = pd.Series([1.0] * len(self.strategy_returns),
-                                                   index=self.strategy_returns.index)
-            self.cumulative_returns = pd.Series([0.0] * len(self.strategy_returns), index=self.strategy_returns.index)
-
-        return self.cumulative_returns
+        if not self.strategy_returns.empty:
+            self.cumulative_returns = (1 + self.strategy_returns).cumprod() - 1
+            self.cumulative_net_assets = pd.Series(
+                self.account.total_assets,
+                index=self.account.dates
+            )
 
     def get_total_return(self):
-        """计算总收益率 - 直接使用最终资产计算"""
-        if len(self.account.total_assets) < 2:
+        """计算总收益率"""
+        if self.cumulative_returns is None:
+            self.calculate_cumulative_returns()
+
+        if self.cumulative_returns.empty:
             return 0.0
-        initial_value = self.account.total_assets[0]
-        final_value = self.account.total_assets[-1]
-        return (final_value / initial_value - 1) * 100
+        return self.cumulative_returns.iloc[-1] * 100  # 转换为百分比
 
     def get_annualized_return(self):
-        """计算年化收益率 - 修复版本"""
+        """计算年化收益率"""
         if len(self.account.dates) < 2:
             return 0.0
 
-        total_return = self.get_total_return() / 100  # 转换为小数
-
-        # 计算实际交易天数
-        trading_days = len(self.account.dates)
-        if trading_days <= 1:
+        total_days = (self.account.dates[-1] - self.account.dates[0]).days
+        if total_days == 0:
             return 0.0
 
-        # 使用交易日数计算年化（假设一年252个交易日）
-        annualized_return = (1 + total_return) **(252 / trading_days) - 1
-        return annualized_return * 100  # 转换为百分比
+        annual_factor = 365 / total_days
+        total_return = self.get_total_return() / 100  # 转换为小数
+        return (pow(1 + total_return, annual_factor) - 1) * 100
 
-    def get_sharpe_ratio(self, risk_free_rate=0.02):
-        """计算夏普比率 - 简化版本，使用最终收益率/标准差"""
+    def get_sharpe_ratio(self, risk_free_rate=0):
+        """计算夏普比率"""
         if self.strategy_returns is None:
             self.calculate_returns()
 
-        if len(self.strategy_returns) < 2:
+        if self.strategy_returns.empty:
             return 0.0
 
-        # 年化收益率
-        annual_return = self.get_annualized_return() / 100
-
-        # 年化波动率
-        annual_volatility = self.strategy_returns.std() * np.sqrt(252)
-
-        if annual_volatility == 0:
-            return 0.0
-
-        # 夏普比率 = (年化收益率 - 无风险利率) / 年化波动率
-        sharpe_ratio = (annual_return - risk_free_rate) / annual_volatility
-        return sharpe_ratio
+        excess_returns = self.strategy_returns - risk_free_rate / 252  # 假设252个交易日
+        return excess_returns.mean() / excess_returns.std() * (252 ** 0.5)
 
     def get_max_drawdown(self):
-        """计算最大回撤 - 修复版本"""
+        """计算最大回撤"""
         if self.cumulative_net_assets is None:
             self.calculate_cumulative_returns()
 
@@ -136,36 +95,14 @@ class PerformanceAnalysis:
 
         return max_drawdown * 100  # 转换为百分比
 
-    def get_volatility(self):
-        """计算年化波动率"""
-        if self.strategy_returns is None:
-            self.calculate_returns()
-
-        if len(self.strategy_returns) < 2:
-            return 0.0
-
-        return self.strategy_returns.std() * np.sqrt(252) * 100
-
-    def get_calmar_ratio(self):
-        """计算Calmar比率"""
-        annual_return = abs(self.get_annualized_return())  # 取绝对值
-        max_dd = abs(self.get_max_drawdown())
-
-        if max_dd == 0:
-            return 0.0
-        return annual_return / max_dd
-
     def get_trade_count(self):
         """获取总交易次数"""
         return len(self.account.trade_history)
 
     def get_buy_sell_count(self):
-        """获取买入/卖出次数"""
-        if not self.account.trade_history:
-            return 0, 0
-        trades = pd.DataFrame(self.account.trade_history)
-        buy_count = len(trades[trades['action'] == 'buy'])
-        sell_count = len(trades[trades['action'] == 'sell'])
+        """获取买入和卖出次数"""
+        buy_count = sum(1 for trade in self.account.trade_history if trade['action'] == 'buy')
+        sell_count = sum(1 for trade in self.account.trade_history if trade['action'] == 'sell')
         return buy_count, sell_count
 
     def get_win_rate(self):

@@ -134,7 +134,7 @@ class Agent():
         self.env = DiscreteIndexEnvironment(file_path1)
         self.data_handler = data_handler
         self.account = account
-        self.performance = PerformanceAnalysis(account)
+        # self.performance = PerformanceAnalysis(account)
         self.value = np.zeros((3, 3, 3))#因子状态格处置：
         """
         #
@@ -175,7 +175,7 @@ class Agent():
         index_return = index_data['close'].iloc[1] / index_data['close'].iloc[0] - 1
         strategy_returns = self.performance.strategy_returns
         feedback = strategy_returns - index_data['return'] / 2
-        self.value[tuple(state)] += feedback
+        self.value[tuple(state)] += feedback * self.Alpha
 
 
 # 使用示例

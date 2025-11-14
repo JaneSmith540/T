@@ -1,10 +1,8 @@
-# file:D:\read\task\回测框架搭建\Strategy_Core.py
 from Utilities import log
 import pandas as pd
 from Data_Handling import get_weight  # 导入获取权重的函数
 
 
-# 导入获取权重的函数
 class WeightBasedStrategy:
     def __init__(self, context):
         self.context = context
@@ -25,7 +23,7 @@ class WeightBasedStrategy:
             self.g.weights = dict(zip(weight_df['ts_code'], weight_df['weight']))
 
             log.info(f"策略初始化完成，股票池包含 {len(self.g.securities)} 只中证500成分股")
-            log.info("策略规则：半仓按权重购买所有成分股后长期持有，不再进行买卖操作")
+            log.info("策略规则：按权重购买所有成分股后长期持有，不再进行买卖操作")
         except Exception as e:
             log.error(f"初始化失败：{str(e)}")
 
@@ -39,13 +37,14 @@ class WeightBasedStrategy:
 
         # 只在第一个交易日执行初始购买
         if not self.g.is_initial_purchase_done:
-            self._initial_purchase(date)
+            self._initial_purchase(date)  # 调用内部方法
             self.g.is_initial_purchase_done = True  # 标记为已完成
         else:
             log.info("已完成初始购买，今日无交易操作")
 
+    # 关键修复：确保该方法与其他方法缩进一致，属于WeightBasedStrategy类
     def _initial_purchase(self, date):
-        """半仓按权重购买所有成分股"""
+        """按权重购买所有成分股"""
         if not self.g.securities or not self.g.weights:
             log.error("股票池或权重数据为空，无法执行初始购买")
             return
@@ -58,9 +57,7 @@ class WeightBasedStrategy:
             log.error("权重总和无效，无法计算购买比例")
             return
 
-        # 使用半仓资金进行购买
-        used_cash = total_cash * 0.5
-        log.info(f"开始执行半仓购买，总资金：{total_cash:.2f}，使用资金：{used_cash:.2f}")
+        log.info(f"开始执行初始购买，总资金：{total_cash:.2f}")
 
         # 遍历所有成分股按权重购买
         for security in self.g.securities:
@@ -69,12 +66,10 @@ class WeightBasedStrategy:
                 log.warning(f"股票 {security} 权重为0，跳过购买")
                 continue
 
-            # 计算该股票的配置金额（按权重比例分配半仓资金）
+            # 计算该股票的配置金额（按权重比例分配总资金）
             allocation_ratio = weight / total_weight
-            target_value = used_cash * allocation_ratio
-            """
-            log.info(f"股票 {security} 权重：{weight}，配置金额：{target_value:.2f}")
-            """
+            target_value = total_cash * allocation_ratio
+
             # 获取当前价格
             from Data_Handling import get_price
             current_data = get_price(security, count=1, fields=['close'], end_date=date)
@@ -95,17 +90,12 @@ class WeightBasedStrategy:
 
             # 执行购买
             success = account.buy(date, security, current_price, buy_amount)
-            """
-            if success:
-                log.info(
-                    f"✅ 买入 {security}，价格：{current_price:.2f}，数量：{buy_amount}，花费：{current_price * buy_amount:.2f}")
-            """
             if not success:
                 log.error(f"❌ 买入 {security} 失败")
 
         # 更新上下文现金信息
         self.context['portfolio']['available_cash'] = account.cash
-        log.info(f"半仓购买完成，剩余现金：{account.cash:.2f}")
+        log.info(f"初始购买完成，剩余现金：{account.cash:.2f}")
 
     def calculate_buy_amount(self, target_value, price):
         """根据目标金额计算可买入数量（考虑手续费）"""
@@ -149,21 +139,7 @@ class WeightBasedStrategy:
                 current_price = current_data['close'].iloc[-1]
                 value = current_price * amount
                 position_value += value
-                """
-                log.info(
-                    f"持仓情况: {security} - 数量: {amount}, 当前价格: {current_price:.2f}, 持仓市值: {value:.2f}")
-                """
         total_assets = cash + position_value
 
         log.info(f"账户状态 - 现金: {cash:.2f}, 持仓市值: {position_value:.2f}, 总资产: {total_assets:.2f}")
         log.info('一天结束\n')
-"""
-        # 打印当日交易记录
-        if account.trade_history:
-            today_trades = [trade for trade in account.trade_history
-                            if pd.to_datetime(trade['date']).date() == date.date()]
-            for trade in today_trades:
-                log.info(f'当日成交记录：{trade}')
-        else:
-            log.info('当日无成交记录')
-"""
