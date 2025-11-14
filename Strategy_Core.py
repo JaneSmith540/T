@@ -25,7 +25,7 @@ class WeightBasedStrategy:
             self.g.weights = dict(zip(weight_df['ts_code'], weight_df['weight']))
 
             log.info(f"策略初始化完成，股票池包含 {len(self.g.securities)} 只中证500成分股")
-            log.info("策略规则：按权重购买所有成分股后长期持有，不再进行买卖操作")
+            log.info("策略规则：半仓按权重购买所有成分股后长期持有，不再进行买卖操作")
         except Exception as e:
             log.error(f"初始化失败：{str(e)}")
 
@@ -45,7 +45,7 @@ class WeightBasedStrategy:
             log.info("已完成初始购买，今日无交易操作")
 
     def _initial_purchase(self, date):
-        """按权重购买所有成分股"""
+        """半仓按权重购买所有成分股"""
         if not self.g.securities or not self.g.weights:
             log.error("股票池或权重数据为空，无法执行初始购买")
             return
@@ -58,7 +58,9 @@ class WeightBasedStrategy:
             log.error("权重总和无效，无法计算购买比例")
             return
 
-        log.info(f"开始执行初始购买，总资金：{total_cash:.2f}")
+        # 使用半仓资金进行购买
+        used_cash = total_cash * 0.5
+        log.info(f"开始执行半仓购买，总资金：{total_cash:.2f}，使用资金：{used_cash:.2f}")
 
         # 遍历所有成分股按权重购买
         for security in self.g.securities:
@@ -67,9 +69,9 @@ class WeightBasedStrategy:
                 log.warning(f"股票 {security} 权重为0，跳过购买")
                 continue
 
-            # 计算该股票的配置金额（按权重比例分配总资金）
+            # 计算该股票的配置金额（按权重比例分配半仓资金）
             allocation_ratio = weight / total_weight
-            target_value = total_cash * allocation_ratio
+            target_value = used_cash * allocation_ratio
             """
             log.info(f"股票 {security} 权重：{weight}，配置金额：{target_value:.2f}")
             """
@@ -103,7 +105,7 @@ class WeightBasedStrategy:
 
         # 更新上下文现金信息
         self.context['portfolio']['available_cash'] = account.cash
-        log.info(f"初始购买完成，剩余现金：{account.cash:.2f}")
+        log.info(f"半仓购买完成，剩余现金：{account.cash:.2f}")
 
     def calculate_buy_amount(self, target_value, price):
         """根据目标金额计算可买入数量（考虑手续费）"""
