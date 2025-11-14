@@ -1,35 +1,11 @@
 # 博弈高手
-import numpy as np
-import pandas as pd
 from tqdm import tqdm,trange
-# 马尔可夫环境下的判断机器
-class Agent():
-    def __init__(self, Epsilon, Alpha):
-        self.value = np.zeros((3, 3, 3))#因子状态格处置：
-        """
-        #
-        #
-        一共27个储存
-        3 @ 3 @ 3
-        """
-        self.Epsilon = Epsilon
-        self.Alpha = Alpha
-
-
-    def decide(self , state):  #返回动作
-        if np.random.binomial(1, self.Epsilon):
-            random_bit = np.random.binomial(1, 0.5)
-            return random_bit  # 结果要么是 0，要么是 1
-        else:
-            Value = self.value[tuple(state)]
-            return Value >= 0
-
+from Data_Handling import DataHandler
+from Performance_Analysis import PerformanceAnalysis  # 导入绩效分析类
+import pandas as pd
+import numpy as np
 
 # 离散简化智能体环境
-import pandas as pd
-import numpy as np
-
-
 class DiscreteIndexEnvironment:
     def __init__(self, file_path):
         """
@@ -109,15 +85,9 @@ class DiscreteIndexEnvironment:
                 return 5
 
         result = {
-            'ts_code': row['ts_code'],
-            'trade_date': target_date.strftime('%Y%m%d'),
             'high_low_rank': discretize_value(high_low_ratio, self.quantiles['high_low_ratio']),
             'close_open_volume_rank': discretize_value(close_open_volume, self.quantiles['close_open_volume']),
             'amount_rank': discretize_value(amount, self.quantiles['amount']),
-            # 可选：返回原始值用于调试
-            'original_high_low_ratio': high_low_ratio,
-            'original_close_open_volume': close_open_volume,
-            'original_amount': amount
         }
 
         return result
@@ -157,6 +127,55 @@ class DiscreteIndexEnvironment:
                 })
 
         return pd.DataFrame(results)
+# 马尔可夫环境下的判断机器
+class Agent():
+    def __init__(self, account, data_handler, Epsilon, Alpha):
+        file_path1 = r"C:\Users\chanpi\Desktop\task\中证500指数_201601-202506.csv"
+        self.env = DiscreteIndexEnvironment(file_path1)
+        self.data_handler = data_handler
+        self.account = account
+        self.performance = PerformanceAnalysis(account)
+        self.value = np.zeros((3, 3, 3))#因子状态格处置：
+        """
+        #
+        #
+        一共27个储存
+        3 @ 3 @ 3
+        """
+        self.Epsilon = Epsilon
+        self.Alpha = Alpha
+        self.pre_state = np.zeros(3, dtype=int)  # 上一个状态
+
+    def decide(self , state):  #返回动作
+        if np.random.binomial(1, self.Epsilon):
+            random_bit = np.random.binomial(1, 0.5)
+            return random_bit  # 结果要么是 0，要么是 1
+        else:
+            Value = self.value[tuple(state)]
+            return Value >= -0.005
+
+
+
+    def receive(self):
+        stock_data = self.data_handler.get_stock_data() - 1  # 获取昨天的日期数据
+        result = env.get_discrete_data(stock_data)
+        state = result = list(result.values())
+        self.pre_state = state
+# 这里一定要注意等下先换感受再决策（晚上感受，第二天决策）
+        return state
+
+    def feedback(self, state):
+        stock_data = self.data_handler.get_stock_data()
+        index_data = self.data_handler.get_index_price(
+            start_date=stock_data - 1,
+            end_date=stock_data,
+            fields=['date', 'close']
+        )
+        index_data = index_data.sort_values('date')
+        index_return = index_data['close'].iloc[1] / index_data['close'].iloc[0] - 1
+        strategy_returns = self.performance.strategy_returns
+        feedback = strategy_returns - index_data['return'] / 2
+        self.value[tuple(state)] += feedback
 
 
 # 使用示例
@@ -202,3 +221,6 @@ if __name__ == "__main__":
         print(f"文件未找到，请检查文件路径: {file_path}")
     except Exception as e:
         print(f"处理数据时出现错误: {e}")
+
+
+
