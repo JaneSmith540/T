@@ -1,0 +1,102 @@
+[33mcommit b572ce1b77a70fb5f106a9fb0af456f3b72cea9e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Sun Nov 16 16:00:09 2025 +0800
+
+    wd
+
+[33mcommit 82741c7edc6cc2d57226cc56661141b4c4a3fbe5[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Sun Nov 16 14:55:10 2025 +0800
+
+    wd
+
+[33mcommit 1456a48c5ef02cd3422c2364b78aba636fe91fb3[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Sun Nov 16 14:30:16 2025 +0800
+
+    wd
+
+[33mcommit b6755412161215adb9ab66125f729918d9bcca7c[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Sun Nov 16 14:12:54 2025 +0800
+
+    wd
+
+[33mcommit c0c3ed210e7a5fca50f25dcf3447be8bf584f780[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Sun Nov 16 14:03:14 2025 +0800
+
+    wd
+
+[33mcommit 491b50b3dba81e0a19b4c6cdceac7590ac5b5667[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Sun Nov 16 13:54:29 2025 +0800
+
+    wd
+
+[33mcommit cc0bd6691ef136a5de93734034b25a9c575a0afa[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Fri Nov 14 19:21:22 2025 +0800
+
+    调参，还有离线学习，今天收工
+
+[33mcommit 61a56bdc9533b2f74e28f66d3c7534ec29347eb8[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Fri Nov 14 18:40:37 2025 +0800
+
+    智能体定义完成，接下来要实现与回测框架的链接
+
+[33mcommit c07a2babe851312015a4bdf46e26d9d8db6c1e3e[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Fri Nov 14 17:39:20 2025 +0800
+
+    差接口和拟合方式
+
+[33mcommit e10cbbf044e7acd3994db566b9a33a5ff07bba7d[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Fri Nov 14 14:51:03 2025 +0800
+
+    c
+
+[33mcommit 5f6ada098d870537216c7119140fc0e222fd677c[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Thu Nov 13 17:34:32 2025 +0800
+
+    注释掉了一些没必要的log
+
+[33mcommit 67741fad5ddfb475fa2dafe3476ac18d77dbe0fd[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Thu Nov 13 15:46:23 2025 +0800
+
+    运行速度还要改进，回测框架逻辑完整度已得到加强
+
+[33mcommit 974b6e1ef8ae4e32d98b68782704b06ccaa12722[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Thu Nov 13 14:32:45 2025 +0800
+
+    加速版本
+
+[33mcommit 2a89574b823cf3c6fa3ab1e37a3598af077f5af6[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Thu Nov 13 13:56:10 2025 +0800
+
+    修改策略为按中证500权重购买并持有
+
+[33mcommit 76b3e23b46b7d107534b2c4434f68a2d177ce0de[m
+Merge: d8450c2 322dbbf
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Wed Nov 12 13:13:48 2025 +0800
+
+    合并远程仓库的内容
+
+[33mcommit d8450c27a38ba3a1d42a00e743a72a3d49dd783b[m
+Author: JaneSmith540 <1150348830@qq.com>
+Date:   Wed Nov 12 13:09:00 2025 +0800
+
+    初始化回测框架项目
+
+[33mcommit 322dbbfe09e8a4b9b62bc011a70d367351fe0a6c[m
+Author: champion <1150348830@qq.com>
+Date:   Wed Nov 12 12:56:55 2025 +0800
+
+    Initial commit

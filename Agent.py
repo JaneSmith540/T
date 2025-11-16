@@ -129,98 +129,79 @@ class DiscreteIndexEnvironment:
         return pd.DataFrame(results)
 # 马尔可夫环境下的判断机器
 class Agent():
-    def __init__(self, account, data_handler, Epsilon, Alpha):
+    def __init__(self, account, data_handler, Epsilon=0.1, Alpha=0.1):
         file_path1 = r"C:\Users\chanpi\Desktop\task\中证500指数_201601-202506.csv"
         self.env = DiscreteIndexEnvironment(file_path1)
         self.data_handler = data_handler
         self.account = account
-        # self.performance = PerformanceAnalysis(account)
-        self.value = np.zeros((5, 5, 5))#因子状态格处置：
-        """
-        #
-        #
-        一共125个储存
-        5 @ 5 @ 5
-        """
+        self.value = np.zeros((5, 5, 5))  # 125个状态的价值函数
         self.Epsilon = Epsilon
         self.Alpha = Alpha
-        self.pre_state = np.zeros(3, dtype=int)  # 上一个状态
+        self.pre_state = None  # 上一个状态
+        self.pre_action = None  # 上一个动作
+        self.current_state = None  # 当前状态
 
-    def decide(self , state):  #返回动作
+    def decide(self, state):
+        """决策函数"""
         if np.random.binomial(1, self.Epsilon):
-            random_bit = np.random.binomial(1, 0.5)
-            return random_bit  # 结果要么是 0，要么是 1
+            # 随机探索
+            return np.random.binomial(1, 0.5)
         else:
-            Value = self.value[tuple(state)]
-            return Value >= -0.005
+            # 利用：选择价值最高的动作
+            state_value = self.value[tuple(state)]
+            return 1 if state_value >= 0 else 0  # 简化处理
+
+    def receive(self, date):
+        """接收环境状态"""
+        try:
+            # 获取离散化状态
+            result = self.env.get_discrete_data(date)
+            if 'error' not in result:
+                state = [
+                    result['high_low_rank'] - 1,  # 转换为0-4索引
+                    result['close_open_volume_rank'] - 1,
+                    result['amount_rank'] - 1
+                ]
+                self.current_state = state
+                return state
+            else:
+                print(f"获取状态失败: {result['error']}")
+                return [2, 2, 2]  # 返回中性状态
+        except Exception as e:
+            print(f"Agent接收状态错误: {e}")
+            return [2, 2, 2]
+
+    def feedback(self, reward):
+        """根据奖励更新价值函数"""
+        if self.pre_state is not None and self.pre_action is not None:
+            # 简单的Q-learning更新
+            current_value = self.value[tuple(self.pre_state)]
+            # 更新价值函数
+            self.value[tuple(self.pre_state)] = current_value + self.Alpha * (
+                    reward - current_value
+            )
+
+        # 更新历史记录
+        self.pre_state = self.current_state
+        self.pre_action = self.decide(self.current_state) if self.current_state else None
+
+    def reset(self):
+        """重置Agent状态"""
+        self.pre_state = None
+        self.pre_action = None
+        self.current_state = None
 
 
+    def get_learning_progress(self):
+        """获取学习进度"""
+        non_zero_values = np.count_nonzero(self.value)
+        total_values = self.value.size
+        progress = non_zero_values / total_values
+        return progress
 
-    def receive(self):
-        stock_data = self.data_handler.get_stock_data() - 1  # 获取昨天的日期数据
-        result = env.get_discrete_data(stock_data)
-        state = result = list(result.values())
-        self.pre_state = state
-# 这里一定要注意等下先换感受再决策（晚上感受，第二天决策）
-        return state
-
-    def feedback(self, state):
-        stock_data = self.data_handler.get_stock_data()
-        index_data = self.data_handler.get_index_price(
-            start_date=stock_data - 1,
-            end_date=stock_data,
-            fields=['date', 'close']
-        )
-        index_data = index_data.sort_values('date')
-        index_return = index_data['close'].iloc[1] / index_data['close'].iloc[0] - 1
-        strategy_returns = self.performance.strategy_returns
-        feedback = strategy_returns - index_data['return'] / 2
-        self.value[tuple(state)] += feedback * self.Alpha
-
-
-# 使用示例
-if __name__ == "__main__":
-    file_path = r"C:\Users\chanpi\Desktop\task\中证500指数_201601-202506.csv"
-
-    try:
-        # 初始化环境
-        env = DiscreteIndexEnvironment(file_path)
-
-        # 测试单个日期（2019年的日期）
-        test_date = '20190102'  # 2019年的日期
-        result = env.get_discrete_data(test_date)
-
-        print(f"\n=== 单个日期测试 ({test_date}) ===")
-        if 'error' in result:
-            print(f"错误: {result['error']}")
-        else:
-            print(f"离散化结果:")
-            print(f"  high_low_rank: {result['high_low_rank']}")
-            print(f"  close_open_volume_rank: {result['close_open_volume_rank']}")
-            print(f"  amount_rank: {result['amount_rank']}")
-            print(f"\n原始值:")
-            print(f"  high_low_ratio: {result['original_high_low_ratio']:.6f}")
-            print(f"  close_open_volume: {result['original_close_open_volume']:.10f}")
-            print(f"  amount: {result['original_amount']:.2f}")
-
-        # 测试日期范围
-        print(f"\n=== 日期范围测试 (2019年1月) ===")
-        range_result = env.get_date_range_data('20190101', '20190131')
-        print(f"获取到 {len(range_result)} 天的数据")
-        if not range_result.empty:
-            print("前5天数据:")
-            print(range_result.head())
-
-        # 验证分位点的一致性
-        print(f"\n=== 分位点验证 ===")
-        print("基准分位点 (基于2016-2018数据):")
-        for indicator, quantiles in env.quantiles.items():
-            print(f"  {indicator}: {quantiles}")
-
-    except FileNotFoundError:
-        print(f"文件未找到，请检查文件路径: {file_path}")
-    except Exception as e:
-        print(f"处理数据时出现错误: {e}")
-
-
+    def print_learning_status(self):
+        """打印学习状态"""
+        progress = self.get_learning_progress()
+        print(f"学习进度: {progress:.2%} ({np.count_nonzero(self.value)}/{self.value.size} 状态已学习)")
+        print(f"价值函数范围: [{self.value.min():.4f}, {self.value.max():.4f}]")
 

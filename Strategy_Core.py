@@ -2,23 +2,32 @@
 from Utilities import log
 import pandas as pd
 import numpy as np
-from Data_Handling import get_weight, get_price
+from Data_Handling import get_weight, get_price, get_index_price
 from Agent import Agent  # 导入Agent类
 
 
 class WeightBasedStrategy:
     def __init__(self, context):
         self.context = context
-        self.g = type('Global', (object,), {})  # 模拟全局变量
+        self.g = type('Global', (object,), {})()  # 模拟全局变量
         self.g.securities = []  # 中证500成分股
         self.g.weights = {}  # 股票权重
         self.g.is_initial_purchase_done = False  # 初始半仓标记
         self.g.initial_half_pos = {}  # 初始半仓持仓 {股票代码: 数量}
-        self.agent = Agent(account=context['account'],  # 改为字典键访问
-                           data_handler=context['data_handler'],
-                           Epsilon=0.1,
-                           Alpha=0.1)
-        self.g.current_state = [0, 0, 0]  # Agent的初始状态（可根据实际因子调整）
+
+        # 初始化Agent
+        self.agent = Agent(
+            account=context['account'],
+            data_handler=context['data_handler'],
+            Epsilon=0.1,
+            Alpha=0.05
+        )
+
+        # 学习相关变量
+        self.g.current_state = [0, 0, 0]  # Agent的初始状态
+        self.g.last_date = None
+        self.g.last_assets = None
+        self.g.last_benchmark_price = None
 
     def initialize(self):
         """初始化策略，先建立半仓底仓"""
@@ -28,16 +37,33 @@ class WeightBasedStrategy:
             self.g.securities = weight_df['ts_code'].unique().tolist()
             self.g.weights = dict(zip(weight_df['ts_code'], weight_df['weight']))
             log.info(f"股票池包含 {len(self.g.securities)} 只中证500成分股")
+
+            # 初始化学习记录
+            self.g.last_assets = self.context['account'].initial_cash
+            self.g.last_date = None
+            self.g.last_benchmark_price = None
+
         except Exception as e:
             log.error(f"初始化失败：{str(e)}")
 
     def before_market_open(self, date):
         """开盘前决策：根据Agent输出确定当日策略"""
-        # 获取当前状态（示例：使用前3日指数涨跌幅作为状态，需根据实际因子实现）
-        self.g.current_state = self._get_market_state(date)
-        # Agent决策（1=看多做T，0=看空做T）
-        self.g.agent_decision = self.agent.decide(self.g.current_state)
-        log.info(f"Agent决策：{self.g.agent_decision}（1=看多做T，0=看空做T）")
+        try:
+            # 如果是第二天及以后，计算前一天的奖励并学习
+            if self.g.last_date is not None:
+                self._learn_from_previous_day()
+
+            # 获取当前市场状态
+            state = self.agent.receive(date)
+            self.g.current_state = state
+
+            # Agent决策
+            self.g.agent_decision = self.agent.decide(state)
+            log.info(f"[{date}] Agent状态: {state}, 决策: {self.g.agent_decision} (1=看多做T, 0=看空做T)")
+
+        except Exception as e:
+            log.error(f"开盘前决策错误: {e}")
+            self.g.agent_decision = 1  # 默认看多
 
     def market_open(self, date):
         """开盘时操作"""
@@ -71,13 +97,86 @@ class WeightBasedStrategy:
             # 看空策略：指数未跌1%则收盘买入半仓（回到50%仓位）
             self._close_buy_half_if_no_drop(date)
 
-        # 打印当日账户状态
-        self._print_account_status(date)
+        # 记录当日收盘数据用于学习
+        self._record_daily_data(date)
+
+    def _record_daily_data(self, date):
+        """记录当日数据用于学习"""
+        try:
+            account = self.context['account']
+            current_assets = account.total_assets[-1] if account.total_assets else account.initial_cash
+
+            # 获取当日基准收盘价
+            benchmark_price = self._get_benchmark_close_price(date)
+
+            # 记录数据
+            self.g.last_assets = current_assets
+            self.g.last_date = date
+            self.g.last_benchmark_price = benchmark_price
+
+            log.info(f"[{date}] 记录数据: 总资产={current_assets:.2f}, 基准收盘价={benchmark_price:.2f}")
+
+        except Exception as e:
+            log.error(f"记录数据错误: {e}")
+
+    def _learn_from_previous_day(self):
+        """从前一日的表现中学习"""
+        try:
+            if self.g.last_date is None or self.g.last_assets is None:
+                return
+
+            account = self.context['account']
+            current_assets = account.total_assets[-1] if account.total_assets else account.initial_cash
+
+            # 计算昨日策略收益率
+            daily_return = (current_assets - self.g.last_assets) / self.g.last_assets
+
+            # 计算基准收益率
+            current_benchmark_price = self._get_benchmark_close_price(self.g.last_date)
+            if self.g.last_benchmark_price and current_benchmark_price:
+                benchmark_return = (current_benchmark_price - self.g.last_benchmark_price) / self.g.last_benchmark_price
+            else:
+                benchmark_return = 0.0
+
+            # 计算超额收益作为奖励
+            reward = daily_return - benchmark_return
+
+            # 给Agent反馈
+            self.agent.feedback(reward)
+
+            log.info(
+                f"[{self.g.last_date}] 学习结果: 策略收益={daily_return:.4f}, 基准收益={benchmark_return:.4f}, 奖励={reward:.4f}")
+
+            # 打印学习进度
+            if hasattr(self.agent, 'get_learning_progress'):
+                progress = self.agent.get_learning_progress()
+                log.info(f"学习进度: {progress:.2%}")
+
+        except Exception as e:
+            log.error(f"学习过程错误: {e}")
+
+    def _get_benchmark_close_price(self, date):
+        """获取基准指数收盘价"""
+        try:
+            # 使用Data_Handling中的get_index_price方法
+            index_data = get_index_price(
+                start_date=date,
+                end_date=date,
+                fields=['date', 'close']
+            )
+            if not index_data.empty and 'close' in index_data.columns:
+                return index_data['close'].iloc[0]
+            else:
+                log.warning(f"无法获取 {date} 的基准收盘价")
+                return None
+        except Exception as e:
+            log.error(f"获取基准收盘价错误: {e}")
+            return None
 
     def _initial_half_position(self, date):
         """建立初始半仓（50%仓位）"""
         account = self.context['account']
-        total_cash = account.cash * 0.5  # 仅用一半资金
+        total_cash = account.initial_cash * 0.5  # 仅用一半资金
         total_weight = sum(self.g.weights.values())
 
         if total_weight <= 0:
@@ -101,11 +200,14 @@ class WeightBasedStrategy:
 
             if account.buy(date, security, current_price, buy_amount):
                 self.g.initial_half_pos[security] = buy_amount
-                log.info(f"初始半仓买入 {security}：{buy_amount}股")
+                log.info(f"初始半仓买入 {security}: {buy_amount}股 @ {current_price:.2f}")
 
     def _open_buy_half(self, date):
         """开盘买入半仓（基于初始半仓的同等金额）"""
         account = self.context['account']
+        total_buy_value = 0
+        successful_buys = 0
+
         for security, initial_amount in self.g.initial_half_pos.items():
             current_price = self._get_current_price(security, date)
             if not current_price:
@@ -118,22 +220,38 @@ class WeightBasedStrategy:
                 continue
 
             if account.buy(date, security, current_price, buy_amount):
-                log.info(f"看多策略买入 {security}：{buy_amount}股")
+                total_buy_value += target_value
+                successful_buys += 1
+                log.info(f"看多策略买入 {security}: {buy_amount}股 @ {current_price:.2f}")
+
+        if successful_buys > 0:
+            log.info(f"看多策略完成: 成功买入{successful_buys}只股票, 总价值{total_buy_value:.2f}")
 
     def _open_sell_half(self, date):
         """开盘卖出全部初始半仓"""
         account = self.context['account']
+        total_sell_value = 0
+        successful_sells = 0
+
         for security, amount in self.g.initial_half_pos.items():
             if security in account.positions and account.positions[security] >= amount:
                 current_price = self._get_current_price(security, date)
                 if not current_price:
                     continue
                 if account.sell(date, security, current_price, amount):
-                    log.info(f"看空策略卖出 {security}：{amount}股")
+                    total_sell_value += amount * current_price
+                    successful_sells += 1
+                    log.info(f"看空策略卖出 {security}: {amount}股 @ {current_price:.2f}")
+
+        if successful_sells > 0:
+            log.info(f"看空策略完成: 成功卖出{successful_sells}只股票, 总价值{total_sell_value:.2f}")
 
     def _close_sell_half_if_no_profit(self, date):
         """收盘时，若未盈利1%则卖出当日新增仓位"""
         account = self.context['account']
+        total_sell_value = 0
+        successful_sells = 0
+
         for security, initial_amount in self.g.initial_half_pos.items():
             current_hold = account.positions.get(security, 0)
             if current_hold <= initial_amount:  # 已达目标仓位
@@ -149,12 +267,41 @@ class WeightBasedStrategy:
             if price_change < 0.01:  # 盈利未达1%
                 sell_amount = current_hold - initial_amount
                 if account.sell(date, security, current_price, sell_amount):
-                    log.info(f"收盘卖出 {security}：{sell_amount}股（未达盈利1%）")
+                    total_sell_value += sell_amount * current_price
+                    successful_sells += 1
+                    log.info(
+                        f"收盘卖出 {security}: {sell_amount}股 @ {current_price:.2f} (未达盈利1%, 涨幅={price_change:.2%})")
+
+        if successful_sells > 0:
+            log.info(f"收盘卖出完成: 成功卖出{successful_sells}只股票, 总价值{total_sell_value:.2f}")
 
     def _close_buy_half_if_no_drop(self, date):
         """收盘时，若指数未跌1%则买入半仓"""
-        if self._get_index_drop(date) < 0.01:  # 指数跌幅未达1%
-            self._open_buy_half(date)  # 复用买入逻辑
+        index_drop = self._get_index_drop(date)
+        if index_drop < 0.01:  # 指数跌幅未达1%
+            log.info(f"指数跌幅{index_drop:.2%}未达1%，执行收盘买入")
+            self._open_buy_half(date)
+        else:
+            log.info(f"指数跌幅{index_drop:.2%}达到1%，不执行收盘买入")
+
+    def _get_index_drop(self, date):
+        """获取当日指数跌幅"""
+        try:
+            # 获取当日指数开盘价和收盘价
+            index_data = get_index_price(
+                start_date=date,
+                end_date=date,
+                fields=['date', 'open', 'close']
+            )
+            if len(index_data) == 0:
+                return 0
+            open_price = index_data['open'].iloc[0]
+            close_price = index_data['close'].iloc[0]
+            drop_ratio = (open_price - close_price) / open_price
+            return max(0, drop_ratio)  # 确保非负
+        except Exception as e:
+            log.error(f"获取指数跌幅失败: {e}")
+            return 0
 
     def _get_current_price(self, security, date):
         """获取股票当前价格（收盘价）"""
@@ -162,7 +309,7 @@ class WeightBasedStrategy:
             data = get_price(security, count=1, fields=['close'], end_date=date)
             return data['close'].iloc[-1] if len(data) > 0 else None
         except Exception as e:
-            log.error(f"获取 {security} 价格失败：{e}")
+            log.error(f"获取 {security} 价格失败: {e}")
             return None
 
     def _get_open_price(self, security, date):
@@ -171,38 +318,8 @@ class WeightBasedStrategy:
             data = get_price(security, count=1, fields=['open'], end_date=date)
             return data['open'].iloc[-1] if len(data) > 0 else None
         except Exception as e:
-            log.error(f"获取 {security} 开盘价失败：{e}")
+            log.error(f"获取 {security} 开盘价失败: {e}")
             return None
-
-    def _get_index_drop(self, date):
-        """获取当日指数跌幅（示例：中证500）"""
-        try:
-            # 需实现指数数据获取逻辑
-            index_data = get_price('000905.SH', count=1, fields=['open', 'close'], end_date=date)
-            if len(index_data) == 0:
-                return 0
-            drop_ratio = (index_data['open'].iloc[-1] - index_data['close'].iloc[-1]) / index_data['open'].iloc[-1]
-            return drop_ratio
-        except Exception as e:
-            log.error(f"获取指数跌幅失败：{e}")
-            return 0
-
-    def _get_market_state(self, date):
-        """获取市场状态（供Agent决策使用）"""
-        # 示例：返回前3日指数涨跌幅状态（需根据实际因子实现）
-        return [0, 0, 0]  # 实际应用中需替换为真实状态计算
-
-    def _print_account_status(self, date):
-        """打印账户状态"""
-        account = self.context['account']
-        cash = account.cash
-        position_value = sum(
-            self._get_current_price(sec, date) * amt
-            for sec, amt in account.positions.items()
-            if self._get_current_price(sec, date)
-        )
-        total_assets = cash + position_value
-        log.info(f"[{date}] 现金: {cash:.2f}, 持仓市值: {position_value:.2f}, 总资产: {total_assets:.2f}")
 
     def calculate_buy_amount(self, target_value, price):
         """计算可买入数量（考虑手续费）"""
@@ -222,3 +339,8 @@ class WeightBasedStrategy:
             commission = max(0.0003 * cost, 5)
             total_cost = cost + commission
         return max_amount
+
+    def print_learning_summary(self):
+        """打印学习总结"""
+        if hasattr(self.agent, 'print_learning_status'):
+            self.agent.print_learning_status()
