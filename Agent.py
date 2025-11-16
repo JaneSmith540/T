@@ -135,12 +135,12 @@ class Agent():
         self.data_handler = data_handler
         self.account = account
         # self.performance = PerformanceAnalysis(account)
-        self.value = np.zeros((3, 3, 3))#因子状态格处置：
+        self.value = np.zeros((5, 5, 5))#因子状态格处置：
         """
         #
         #
-        一共27个储存
-        3 @ 3 @ 3
+        一共125个储存
+        5 @ 5 @ 5
         """
         self.Epsilon = Epsilon
         self.Alpha = Alpha
