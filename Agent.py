@@ -4,6 +4,11 @@ from Data_Handling import DataHandler
 from Performance_Analysis import PerformanceAnalysis  # 导入绩效分析类
 import pandas as pd
 import numpy as np
+import logging
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
 
 # 离散简化智能体环境
 class DiscreteIndexEnvironment:
@@ -140,6 +145,7 @@ class Agent():
         self.pre_state = None
         self.pre_action = None
         self.current_state = None
+        self.log = logging.getLogger(__name__)
 
 
         # 学习统计
