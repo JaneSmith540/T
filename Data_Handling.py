@@ -236,47 +236,36 @@ class DataHandler:
         # 转换为DataFrame格式返回
         return pd.DataFrame(list(self.weights_data.items()), columns=['ts_code', 'weight'])
 
-    def get_index_price(self, start_date=None, end_date=None, fields=None):
-        """
-        获取中证500指数价格数据
-        """
-        if self.index_data is None:
-            print("警告: 指数数据未加载")
-            return pd.DataFrame()
+    def get_index_price(self, start_date, end_date, fields):
+        """获取中证500指数价格数据"""
+        # 读取CSV文件
+        df = pd.read_csv(r"C:\Users\chanpi\Desktop\task\中证500指数_201601-202506.csv")
 
-        try:
-            # 复制数据以避免修改原始数据
-            df = self.index_data.copy()
+        # 关键修复1：使用实际日期列名'trade_date'
+        if 'trade_date' in df.columns:
+            # 关键修复2：显式指定格式为'YYYYMMDD'，确保解析正确
+            df['trade_date'] = pd.to_datetime(df['trade_date'], format='%Y%m%d', errors='coerce')
+            # 移除解析失败的无效日期
+            df = df.dropna(subset=['trade_date'])
 
-            # 确保日期是Timestamp对象
-            if start_date:
-                start_date = pd.to_datetime(start_date)
-            if end_date:
-                end_date = pd.to_datetime(end_date)
+            # 按日期筛选（使用正确的列名）
+            start = pd.to_datetime(start_date)
+            end = pd.to_datetime(end_date)
+            mask = (df['trade_date'] >= start) & (df['trade_date'] <= end)
+            df = df.loc[mask]
 
-            # 按日期筛选数据
-            if start_date and end_date:
-                mask = (df.index >= start_date) & (df.index <= end_date)
-                df = df[mask]
-            elif start_date:
-                df = df[df.index >= start_date]
-            elif end_date:
-                df = df[df.index <= end_date]
+        # 字段筛选（保持不变）
+        if fields and len(fields) > 0:
+            available_fields = [field for field in fields if field in df.columns]
+            if available_fields:
+                df = df[available_fields]
 
-            # 如果指定了fields，只返回需要的字段
-            if fields and len(fields) > 0:
-                available_fields = [field for field in fields if field in df.columns]
-                if available_fields:
-                    df = df[available_fields]
+        # 若筛选后无数据，打印警告（便于调试）
+        if df.empty:
+            import logging
+            logging.warning(f"[{start_date}] 无法获取指数数据（日期范围或格式错误）")
 
-            return df
-
-        except Exception as e:
-            print(f"获取指数价格数据错误: {e}")
-            import traceback
-            traceback.print_exc()
-            return pd.DataFrame()
-
+        return df
     def get_index_data_for_date(self, date):
         """
         专门为单个日期获取指数数据的方法
