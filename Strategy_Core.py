@@ -4,7 +4,6 @@ import numpy as np
 from Data_Handling import get_weight, get_price, get_index_price
 from Agent import Agent  # 导入Agent类
 
-
 class WeightBasedStrategy:
     def __init__(self, context):
         self.context = context
@@ -71,7 +70,7 @@ class WeightBasedStrategy:
             self.g.agent_decision = 1  # 默认看多
 
     def market_open(self, date):
-        """开盘时操作"""
+        """开盘时操作 - 使用开盘价"""
         account = self.context['account']
 
         # 第一步：建立初始半仓（仅首次运行）
@@ -89,7 +88,7 @@ class WeightBasedStrategy:
             self._open_sell_half(date)
 
     def after_market_close(self, date):
-        """收盘时操作"""
+        """收盘时操作 - 使用收盘价"""
         account = self.context['account']
 
         if not self.g.is_initial_purchase_done:
@@ -169,7 +168,11 @@ class WeightBasedStrategy:
     def _get_benchmark_close_price(self, date):
         """获取基准指数收盘价"""
         try:
-            # 使用Data_Handling中的get_index_price方法
+            # 使用回测引擎提供的指数数据
+            if 'index_data' in self.context and self.context['index_data']:
+                return self.context['index_data'].get('close')
+
+            # 备用方法
             index_data = get_index_price(
                 start_date=date,
                 end_date=date,
@@ -187,17 +190,24 @@ class WeightBasedStrategy:
     def _get_index_performance(self, date):
         """获取指数当日表现（最高价涨幅和最低价跌幅）"""
         try:
-            index_data = get_index_price(
-                start_date=date,
-                end_date=date,
-                fields=['date', 'open', 'high', 'low', 'close']
-            )
-            if index_data.empty:
-                return 0, 0
-
-            open_price = index_data['open'].iloc[0]
-            high_price = index_data['high'].iloc[0]
-            low_price = index_data['low'].iloc[0]
+            # 使用回测引擎提供的指数数据
+            if 'index_data' in self.context and self.context['index_data']:
+                index_data = self.context['index_data']
+                open_price = index_data.get('open', 0)
+                high_price = index_data.get('high', 0)
+                low_price = index_data.get('low', 0)
+            else:
+                # 备用方法
+                index_data = get_index_price(
+                    start_date=date,
+                    end_date=date,
+                    fields=['date', 'open', 'high', 'low', 'close']
+                )
+                if index_data.empty:
+                    return 0, 0
+                open_price = index_data['open'].iloc[0]
+                high_price = index_data['high'].iloc[0]
+                low_price = index_data['low'].iloc[0]
 
             high_increase = (high_price - open_price) / open_price if open_price > 0 else 0
             low_decrease = (open_price - low_price) / open_price if open_price > 0 else 0
@@ -224,7 +234,7 @@ class WeightBasedStrategy:
 
             allocation_ratio = weight / total_weight
             target_value = total_cash * allocation_ratio
-            current_price = self._get_current_price(security, date)
+            current_price = self._get_open_price(security, date)  # 使用开盘价
             if not current_price:
                 continue
 
@@ -238,13 +248,13 @@ class WeightBasedStrategy:
                 log.info(f"初始半仓买入 {security}：{buy_amount}股 @ {current_price:.2f}")
 
     def _open_buy_half(self, date):
-        """开盘买入半仓（基于初始半仓的同等金额）"""
+        """开盘买入半仓（基于初始半仓的同等金额）- 使用开盘价"""
         account = self.context['account']
         total_buy_value = 0
         successful_buys = 0
 
         for security, initial_amount in self.g.initial_half_pos.items():
-            current_price = self._get_current_price(security, date)
+            current_price = self._get_open_price(security, date)  # 使用开盘价
             if not current_price:
                 continue
 
@@ -257,32 +267,32 @@ class WeightBasedStrategy:
             if account.buy(date, security, current_price, buy_amount):
                 total_buy_value += target_value
                 successful_buys += 1
-                log.info(f"看多策略买入 {security}：{buy_amount}股 @ {current_price:.2f}")
+                log.info(f"看多策略开盘买入 {security}：{buy_amount}股 @ {current_price:.2f}")
 
         if successful_buys > 0:
-            log.info(f"看多策略完成: 成功买入{successful_buys}只股票, 总价值{total_buy_value:.2f}")
+            log.info(f"看多策略开盘买入完成: 成功买入{successful_buys}只股票, 总价值{total_buy_value:.2f}")
 
     def _open_sell_half(self, date):
-        """开盘卖出全部初始半仓"""
+        """开盘卖出全部初始半仓 - 使用开盘价"""
         account = self.context['account']
         total_sell_value = 0
         successful_sells = 0
 
         for security, amount in self.g.initial_half_pos.items():
             if security in account.positions and account.positions[security] >= amount:
-                current_price = self._get_current_price(security, date)
+                current_price = self._get_open_price(security, date)  # 使用开盘价
                 if not current_price:
                     continue
                 if account.sell(date, security, current_price, amount):
                     total_sell_value += amount * current_price
                     successful_sells += 1
-                    log.info(f"看空策略卖出 {security}：{amount}股 @ {current_price:.2f}")
+                    log.info(f"看空策略开盘卖出 {security}：{amount}股 @ {current_price:.2f}")
 
         if successful_sells > 0:
-            log.info(f"看空策略完成: 成功卖出{successful_sells}只股票, 总价值{total_sell_value:.2f}")
+            log.info(f"看空策略开盘卖出完成: 成功卖出{successful_sells}只股票, 总价值{total_sell_value:.2f}")
 
     def _close_sell_by_index_performance(self, date):
-        """收盘时根据指数表现决定卖出价格"""
+        """收盘时根据指数表现决定卖出价格 - 使用收盘价"""
         account = self.context['account']
 
         # 获取指数表现
@@ -321,7 +331,7 @@ class WeightBasedStrategy:
             log.info(f"收盘卖出完成: 成功卖出{successful_sells}只股票, 总价值{total_sell_value:.2f}")
 
     def _close_buy_by_index_performance(self, date):
-        """收盘时根据指数表现决定买入价格"""
+        """收盘时根据指数表现决定买入价格 - 使用收盘价"""
         account = self.context['account']
 
         # 获取指数表现
@@ -362,6 +372,10 @@ class WeightBasedStrategy:
     def _get_current_price(self, security, date):
         """获取股票当前价格（收盘价）"""
         try:
+            # 使用回测引擎提供的收盘价数据
+            if 'open_prices' in self.context and security in self.context['open_prices']:
+                return self.context['open_prices'][security]
+
             data = get_price(security, count=1, fields=['close'], end_date=date)
             return data['close'].iloc[-1] if len(data) > 0 else None
         except Exception as e:
@@ -371,16 +385,15 @@ class WeightBasedStrategy:
     def _get_open_price(self, security, date):
         """获取股票开盘价"""
         try:
+            # 使用回测引擎提供的开盘价数据
+            if 'open_prices' in self.context and security in self.context['open_prices']:
+                return self.context['open_prices'][security]
+
             data = get_price(security, count=1, fields=['open'], end_date=date)
             return data['open'].iloc[-1] if len(data) > 0 else None
         except Exception as e:
             log.error(f"获取 {security} 开盘价失败: {e}")
             return None
-
-    def _get_market_state(self, date):
-        """获取市场状态（供Agent决策使用）"""
-        # 这个方法现在不需要了，因为Agent有自己的receive方法
-        return [0, 0, 0]
 
     def _print_account_status(self, date):
         """打印账户状态"""

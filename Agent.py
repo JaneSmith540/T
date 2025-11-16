@@ -1,13 +1,13 @@
 # 博弈高手
-from tqdm import tqdm,trange
+from tqdm import tqdm, trange
 from Data_Handling import DataHandler
 from Performance_Analysis import PerformanceAnalysis  # 导入绩效分析类
 import pandas as pd
 import numpy as np
 import logging
+
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 
 
 # 离散简化智能体环境
@@ -23,9 +23,10 @@ class DiscreteIndexEnvironment:
         self.df = pd.read_csv(file_path)
         self.df['trade_date'] = pd.to_datetime(self.df['trade_date'], format='%Y%m%d')
 
-        # 获取基准数据（2016-2018）
-        start_date = pd.to_datetime('20160101')
-        end_date = pd.to_datetime('20180101')
+        # 获取基准数据（使用文件中的可用数据范围）
+        # 由于数据从2018年开始，调整基准期间为2018-2020
+        start_date = pd.to_datetime('20180101')
+        end_date = pd.to_datetime('20200101')
         self.baseline_df = self.df[
             (self.df['trade_date'] >= start_date) &
             (self.df['trade_date'] <= end_date)
@@ -124,18 +125,20 @@ class DiscreteIndexEnvironment:
             result = self.get_discrete_data(row['trade_date'])
             if 'error' not in result:
                 results.append({
-                    'ts_code': result['ts_code'],
-                    'trade_date': result['trade_date'],
+                    'trade_date': row['trade_date'],
                     'high_low_rank': result['high_low_rank'],
                     'close_open_volume_rank': result['close_open_volume_rank'],
                     'amount_rank': result['amount_rank']
                 })
 
         return pd.DataFrame(results)
+
+
 # 马尔可夫环境下的判断机器
 class Agent():
     def __init__(self, account, data_handler, Epsilon=0.1, Alpha=0.1):
-        file_path1 = r"C:\Users\chanpi\Desktop\task\中证500指数_201601-202506.csv"
+        # 使用与DataHandler相同的指数文件路径
+        file_path1 = r"D:\read\task\中证500指数_201801-202506.csv"
         self.env = DiscreteIndexEnvironment(file_path1)
         self.data_handler = data_handler
         self.account = account
@@ -146,7 +149,6 @@ class Agent():
         self.pre_action = None
         self.current_state = None
         self.log = logging.getLogger(__name__)
-
 
         # 学习统计
         self.learning_updates = 0
@@ -204,22 +206,27 @@ class Agent():
             return [2, 2, 2]
 
     def feedback(self, reward):
-        """根据奖励更新价值函数 - 修复学习逻辑"""
+        """根据奖励更新价值函数 - 根据动作调整奖励"""
         if self.pre_state is not None and self.current_state is not None:
             try:
+                # 根据先前动作调整奖励
+                adjusted_reward = reward
+                if self.pre_action == 0:  # 如果先前动作是0（不买入）
+                    adjusted_reward = -reward  # 奖励取反
+
                 # 简单的时序差分学习
                 pre_state_tuple = tuple(self.pre_state)
                 current_value = self.value[pre_state_tuple]
 
                 # Q-learning 更新规则
-                new_value = current_value + self.Alpha * (reward - current_value)
+                new_value = current_value + self.Alpha * (adjusted_reward - current_value)
                 self.value[pre_state_tuple] = new_value
 
                 self.learning_updates += 1
-                self.total_reward += reward
+                self.total_reward += adjusted_reward
 
                 self.log.info(
-                    f"学习更新: 状态{self.pre_state} 价值{current_value:.6f} -> {new_value:.6f} (奖励:{reward:.6f})")
+                    f"学习更新: 状态{self.pre_state} 动作{self.pre_action} 原始奖励:{reward:.6f} 调整后奖励:{adjusted_reward:.6f} 价值{current_value:.6f} -> {new_value:.6f}")
 
             except Exception as e:
                 self.log.error(f"学习更新错误: {e}")
@@ -256,4 +263,3 @@ class Agent():
                 state = [non_zero_indices[0][i], non_zero_indices[1][i], non_zero_indices[2][i]]
                 value = self.value[tuple(state)]
                 print(f"  状态{state}: 价值{value:.6f}")
-

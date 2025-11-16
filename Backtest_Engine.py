@@ -5,6 +5,7 @@ from Performance_Analysis import PerformanceAnalysis
 from Visualization import BacktestVisualization
 from tqdm import tqdm
 import logging
+from Data_Handling import get_index_price, get_weight
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -162,11 +163,16 @@ class BacktestEngine:
             return True
         return len(self.account.positions) < self.max_stock_holdings
 
-    def _get_daily_stock_prices(self, date):
-        """获取当日所有持仓股票的价格"""
+    def _get_daily_stock_prices(self, date, price_type='close'):
+        """获取当日所有持仓股票的价格
+        :param price_type: 'open'或'close'
+        """
         try:
-            # 获取当日所有股票的收盘价数据
-            daily_stock_data = self.data_handler.get_single_day_data(date)
+            # 获取当日所有股票的价格数据
+            if price_type == 'open':
+                daily_stock_data = self.data_handler.get_single_day_open_data(date)
+            else:
+                daily_stock_data = self.data_handler.get_single_day_data(date)
 
             # 构建持仓股票的价格字典
             stock_prices = {}
@@ -176,26 +182,81 @@ class BacktestEngine:
                 else:
                     # 如果当日没有数据，尝试使用最近的价格
                     try:
-                        recent_data = self.data_handler.get_price(
-                            stock_code,
-                            end_date=date,
-                            count=1,
-                            fields=['close']
-                        )
-                        if not recent_data.empty:
-                            stock_prices[stock_code] = recent_data['close'].iloc[-1]
+                        if price_type == 'open':
+                            recent_data = self.data_handler.get_price(
+                                stock_code,
+                                end_date=date,
+                                count=1,
+                                fields=['open']
+                            )
+                            price_field = 'open'
                         else:
-                            log.warning(f"[{date}] 无法获取 {stock_code} 的价格，使用0计算")
+                            recent_data = self.data_handler.get_price(
+                                stock_code,
+                                end_date=date,
+                                count=1,
+                                fields=['close']
+                            )
+                            price_field = 'close'
+
+                        if not recent_data.empty:
+                            stock_prices[stock_code] = recent_data[price_field].iloc[-1]
+                        else:
+                            log.warning(f"[{date}] 无法获取 {stock_code} 的{price_type}价格，使用0计算")
                             stock_prices[stock_code] = 0
                     except Exception as e:
-                        log.warning(f"[{date}] 获取 {stock_code} 价格失败: {e}")
+                        log.warning(f"[{date}] 获取 {stock_code} {price_type}价格失败: {e}")
                         stock_prices[stock_code] = 0
 
             return stock_prices
 
         except Exception as e:
-            log.error(f"[{date}] 获取股票价格失败: {e}")
+            log.error(f"[{date}] 获取股票{price_type}价格失败: {e}")
             return {}
+
+    def _get_daily_open_prices(self, date):
+        """获取当日开盘价"""
+        return self._get_daily_stock_prices(date, price_type='open')
+
+    def _get_index_data(self, date):
+        """获取指数数据（开盘、最高、最低、收盘）"""
+        try:
+            # 假设数据处理器有获取指数数据的方法
+            if hasattr(self.data_handler, 'get_index_data'):
+                index_data = self.data_handler.get_index_data(
+                    start_date=date,
+                    end_date=date,
+                    fields=['open', 'high', 'low', 'close']
+                )
+                if not index_data.empty:
+                    return index_data.iloc[0].to_dict()
+
+            # 备用方法：尝试获取中证500指数数据
+            try:
+                # 这里需要根据实际数据源调整
+                index_code = '000905.SH'  # 中证500
+                index_data = self.data_handler.get_price(
+                    index_code,
+                    end_date=date,
+                    count=1,
+                    fields=['open', 'high', 'low', 'close']
+                )
+                if not index_data.empty:
+                    return {
+                        'open': index_data['open'].iloc[-1],
+                        'high': index_data['high'].iloc[-1],
+                        'low': index_data['low'].iloc[-1],
+                        'close': index_data['close'].iloc[-1]
+                    }
+            except:
+                pass
+
+            log.warning(f"[{date}] 无法获取指数数据")
+            return {'open': 0, 'high': 0, 'low': 0, 'close': 0}
+
+        except Exception as e:
+            log.error(f"[{date}] 获取指数数据失败: {e}")
+            return {'open': 0, 'high': 0, 'low': 0, 'close': 0}
 
     def run(self, start_date=None, end_date=None):
         """运行回测"""
@@ -241,15 +302,22 @@ class BacktestEngine:
                 # 1. 开盘前：Agent接收状态并决策
                 self.strategy.before_market_open(date)
 
-                # 2. 开盘时：执行交易
+                # 2. 开盘时：执行交易（使用开盘价）
+                # 为策略提供开盘价获取方法
+                open_prices = self._get_daily_open_prices(date)
+                self.context['open_prices'] = open_prices
                 self.strategy.market_open(date)
 
-                # 3. 获取当日股票价格并计算资产
-                stock_prices = self._get_daily_stock_prices(date)
-                current_assets = self.account.calculate_total_assets(date, stock_prices)
-
-                # 4. 收盘后：记录数据用于学习
+                # 3. 收盘后：执行收盘交易（使用收盘价）
                 self.strategy.after_market_close(date)
+
+                # 4. 获取当日收盘价并计算资产
+                close_prices = self._get_daily_stock_prices(date, price_type='close')
+                current_assets = self.account.calculate_total_assets(date, close_prices)
+
+                # 5. 为策略提供指数数据
+                index_data = self._get_index_data(date)
+                self.context['index_data'] = index_data
 
                 # 打印当日总结
                 log.info(f"[{date}] 当日总结: 总资产={current_assets:,.2f}, 现金={self.account.cash:,.2f}, "
@@ -333,3 +401,8 @@ class BacktestEngine:
             log.info(f"回测结果已保存到: {file_path}_*.csv")
         except Exception as e:
             log.error(f"保存结果失败: {e}")
+
+
+
+
+
