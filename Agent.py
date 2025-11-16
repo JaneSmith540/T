@@ -134,74 +134,120 @@ class Agent():
         self.env = DiscreteIndexEnvironment(file_path1)
         self.data_handler = data_handler
         self.account = account
-        self.value = np.zeros((5, 5, 5))  # 125个状态的价值函数
+        self.value = np.zeros((5, 5, 5))  # 状态价值函数
         self.Epsilon = Epsilon
         self.Alpha = Alpha
-        self.pre_state = None  # 上一个状态
-        self.pre_action = None  # 上一个动作
-        self.current_state = None  # 当前状态
-
-    def decide(self, state):
-        """决策函数"""
-        if np.random.binomial(1, self.Epsilon):
-            # 随机探索
-            return np.random.binomial(1, 0.5)
-        else:
-            # 利用：选择价值最高的动作
-            state_value = self.value[tuple(state)]
-            return 1 if state_value >= 0 else 0  # 简化处理
-
-    def receive(self, date):
-        """接收环境状态"""
-        try:
-            # 获取离散化状态
-            result = self.env.get_discrete_data(date)
-            if 'error' not in result:
-                state = [
-                    result['high_low_rank'] - 1,  # 转换为0-4索引
-                    result['close_open_volume_rank'] - 1,
-                    result['amount_rank'] - 1
-                ]
-                self.current_state = state
-                return state
-            else:
-                print(f"获取状态失败: {result['error']}")
-                return [2, 2, 2]  # 返回中性状态
-        except Exception as e:
-            print(f"Agent接收状态错误: {e}")
-            return [2, 2, 2]
-
-    def feedback(self, reward):
-        """根据奖励更新价值函数"""
-        if self.pre_state is not None and self.pre_action is not None:
-            # 简单的Q-learning更新
-            current_value = self.value[tuple(self.pre_state)]
-            # 更新价值函数
-            self.value[tuple(self.pre_state)] = current_value + self.Alpha * (
-                    reward - current_value
-            )
-
-        # 更新历史记录
-        self.pre_state = self.current_state
-        self.pre_action = self.decide(self.current_state) if self.current_state else None
-
-    def reset(self):
-        """重置Agent状态"""
         self.pre_state = None
         self.pre_action = None
         self.current_state = None
 
 
+        # 学习统计
+        self.learning_updates = 0
+        self.total_reward = 0.0
+
+    def decide(self, state):
+        """决策函数 - 修复决策逻辑"""
+        if state is None:
+            self.log.warning("状态为None，使用默认决策")
+            return 1
+
+        try:
+            if np.random.binomial(1, self.Epsilon):
+                # 探索：随机选择动作
+                action = np.random.randint(0, 2)
+                self.log.debug(f"探索决策: 状态{state} -> 动作{action}")
+                return action
+            else:
+                # 利用：根据价值函数选择动作
+                state_tuple = tuple(state)
+                state_value = self.value[state_tuple]
+
+                # 如果价值相等，随机选择；否则选择价值高的动作
+                if state_value == 0:
+                    action = np.random.randint(0, 2)
+                else:
+                    action = 1 if state_value > 0 else 0
+
+                self.log.debug(f"利用决策: 状态{state} -> 价值{state_value:.4f} -> 动作{action}")
+                return action
+        except Exception as e:
+            self.log.error(f"决策错误: {e}")
+            return 1
+
+    def receive(self, date):
+        """接收环境状态 - 修复状态获取"""
+        try:
+            # 获取离散化状态
+            result = self.env.get_discrete_data(date)
+            if 'error' not in result:
+                # 确保状态值在有效范围内
+                state = [
+                    max(0, min(4, result['high_low_rank'] - 1)),
+                    max(0, min(4, result['close_open_volume_rank'] - 1)),
+                    max(0, min(4, result['amount_rank'] - 1))
+                ]
+                self.current_state = state
+                self.log.info(f"接收状态: 日期{date} -> 状态{state}")
+                return state
+            else:
+                self.log.warning(f"获取状态失败: {result['error']}, 使用中性状态")
+                return [2, 2, 2]  # 返回中性状态
+        except Exception as e:
+            self.log.error(f"接收状态错误: {e}")
+            return [2, 2, 2]
+
+    def feedback(self, reward):
+        """根据奖励更新价值函数 - 修复学习逻辑"""
+        if self.pre_state is not None and self.current_state is not None:
+            try:
+                # 简单的时序差分学习
+                pre_state_tuple = tuple(self.pre_state)
+                current_value = self.value[pre_state_tuple]
+
+                # Q-learning 更新规则
+                new_value = current_value + self.Alpha * (reward - current_value)
+                self.value[pre_state_tuple] = new_value
+
+                self.learning_updates += 1
+                self.total_reward += reward
+
+                self.log.info(
+                    f"学习更新: 状态{self.pre_state} 价值{current_value:.6f} -> {new_value:.6f} (奖励:{reward:.6f})")
+
+            except Exception as e:
+                self.log.error(f"学习更新错误: {e}")
+        else:
+            self.log.debug("没有先前状态，跳过学习")
+
+        # 更新历史记录
+        self.pre_state = self.current_state
+
     def get_learning_progress(self):
         """获取学习进度"""
-        non_zero_values = np.count_nonzero(self.value)
-        total_values = self.value.size
-        progress = non_zero_values / total_values
+        # 使用绝对值阈值来判断是否学习过
+        learned_states = np.sum(np.abs(self.value) > 1e-8)
+        total_states = self.value.size
+        progress = learned_states / total_states
         return progress
 
     def print_learning_status(self):
         """打印学习状态"""
         progress = self.get_learning_progress()
-        print(f"学习进度: {progress:.2%} ({np.count_nonzero(self.value)}/{self.value.size} 状态已学习)")
-        print(f"价值函数范围: [{self.value.min():.4f}, {self.value.max():.4f}]")
+        learned_states = np.sum(np.abs(self.value) > 1e-8)
+        total_states = self.value.size
+
+        print(f"学习进度: {progress:.2%} ({learned_states}/{total_states} 状态已学习)")
+        print(f"价值函数范围: [{self.value.min():.6f}, {self.value.max():.6f}]")
+        print(f"学习更新次数: {self.learning_updates}")
+        print(f"累计奖励: {self.total_reward:.6f}")
+
+        # 打印一些学习示例
+        non_zero_indices = np.where(np.abs(self.value) > 1e-8)
+        if len(non_zero_indices[0]) > 0:
+            print("学习示例:")
+            for i in range(min(3, len(non_zero_indices[0]))):
+                state = [non_zero_indices[0][i], non_zero_indices[1][i], non_zero_indices[2][i]]
+                value = self.value[tuple(state)]
+                print(f"  状态{state}: 价值{value:.6f}")
 

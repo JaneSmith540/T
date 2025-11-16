@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 
 
-
-
 class PerformanceAnalysis:
     def __init__(self, account):
         self.account = account
