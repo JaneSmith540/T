@@ -14,11 +14,10 @@ class WeightBasedStrategy:
         self.g.weights = {}  # 股票权重
         self.g.is_initial_purchase_done = False  # 初始半仓标记
         self.g.initial_half_pos = {}  # 初始半仓持仓 {股票代码: 数量}
-
-        # 初始化Agent（参数可调整）
-        self.agent = Agent(account=context.account,
-                           data_handler=context.data_handler,
-                           Epsilon=0.1, Alpha=0.5)
+        self.agent = Agent(account=context['account'],  # 改为字典键访问
+                           data_handler=context['data_handler'],
+                           Epsilon=0.1,
+                           Alpha=0.1)
         self.g.current_state = [0, 0, 0]  # Agent的初始状态（可根据实际因子调整）
 
     def initialize(self):
