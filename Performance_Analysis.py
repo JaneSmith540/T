@@ -8,6 +8,7 @@ class PerformanceAnalysis:
         self.strategy_returns = None
         self.cumulative_returns = None
         self.cumulative_net_assets = None
+        self.total_return = None
 
         # 只有在有资产数据时才计算收益率
         if len(self.account.total_assets) > 0:

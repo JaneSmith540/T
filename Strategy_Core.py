@@ -201,7 +201,7 @@ class WeightBasedStrategy:
                 index_data = get_index_price(
                     start_date=date,
                     end_date=date,
-                    fields=['date', 'open', 'high', 'low', 'close']
+                    fields=['trade_date', 'open', 'high', 'low', 'close']
                 )
                 if index_data.empty:
                     return 0, 0

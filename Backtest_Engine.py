@@ -219,39 +219,39 @@ class BacktestEngine:
         return self._get_daily_stock_prices(date, price_type='open')
 
     def _get_index_data(self, date):
-        """获取指数数据（开盘、最高、最低、收盘）"""
+        """获取指数数据（开盘、最高、最低、收盘）- 复用策略类的指数表现获取逻辑"""
         try:
-            # 假设数据处理器有获取指数数据的方法
-            if hasattr(self.data_handler, 'get_index_data'):
-                index_data = self.data_handler.get_index_data(
+            # 调用策略类中的 _get_index_performance 方法获取核心数据
+            # 先获取策略实例中的指数高开低数据
+            high_increase, low_decrease = self.strategy._get_index_performance(date)
+
+            # 从策略的指数表现逻辑中提取完整的高开低收数据
+            if 'index_data' in self.strategy.context and self.strategy.context['index_data']:
+                # 直接复用策略上下文中已有的指数数据
+                index_data = self.strategy.context['index_data']
+                return {
+                    'open': index_data.get('open', 0),
+                    'high': index_data.get('high', 0),
+                    'low': index_data.get('low', 0),
+                    'close': index_data.get('close', 0)
+                }
+            else:
+                # 备用：通过 get_index_price 补充收盘价
+                index_data = get_index_price(
                     start_date=date,
                     end_date=date,
-                    fields=['open', 'high', 'low', 'close']
-                )
-                if not index_data.empty:
-                    return index_data.iloc[0].to_dict()
-
-            # 备用方法：尝试获取中证500指数数据
-            try:
-                # 这里需要根据实际数据源调整
-                index_code = '000905.SH'  # 中证500
-                index_data = self.data_handler.get_price(
-                    index_code,
-                    end_date=date,
-                    count=1,
-                    fields=['open', 'high', 'low', 'close']
+                    fields=['trade_date', 'open', 'high', 'low', 'close']
                 )
                 if not index_data.empty:
                     return {
-                        'open': index_data['open'].iloc[-1],
-                        'high': index_data['high'].iloc[-1],
-                        'low': index_data['low'].iloc[-1],
-                        'close': index_data['close'].iloc[-1]
+                        'open': index_data['open'].iloc[0],
+                        'high': index_data['high'].iloc[0],
+                        'low': index_data['low'].iloc[0],
+                        'close': index_data['close'].iloc[0]
                     }
-            except:
-                pass
 
-            log.warning(f"[{date}] 无法获取指数数据")
+            # 若所有方法均失败，返回默认值并记录警告
+            log.warning(f"[{date}] 无法获取指数数据（已尝试策略类的指数表现逻辑）")
             return {'open': 0, 'high': 0, 'low': 0, 'close': 0}
 
         except Exception as e:
