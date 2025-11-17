@@ -245,7 +245,7 @@ class WeightBasedStrategy:
             if account.buy(date, security, current_price, buy_amount):
                 self.g.initial_half_pos[security] = buy_amount
                 self.g.initial_prices[security] = current_price  # 记录初始买入价格
-                log.info(f"初始半仓买入 {security}：{buy_amount}股 @ {current_price:.2f}")
+                # log.info(f"初始半仓买入 {security}：{buy_amount}股 @ {current_price:.2f}")
 
     def _open_buy_half(self, date):
         """开盘买入半仓（基于初始半仓的同等金额）- 使用开盘价"""
@@ -307,11 +307,11 @@ class WeightBasedStrategy:
             if current_hold <= initial_amount:  # 已达目标仓位
                 continue
 
-            # 如果指数最高涨幅超过1%，使用成本价*1.01作为卖出价，否则使用收盘价
-            if high_increase >= 0.01:
-                # 使用成本价的1.01倍作为卖出价
+            # 如果指数最高涨幅超过0.8%，使用成本价*1.008作为卖出价，否则使用收盘价
+            if high_increase >= 0.005:
+                # 使用成本价的1.007倍作为卖出价
                 cost_price = self.g.initial_prices.get(security, 0)
-                target_sell_price = cost_price * 1.01
+                target_sell_price = cost_price * 1.005
                 log.info(f"指数涨幅达{high_increase:.2%}，使用目标卖出价: {target_sell_price:.2f}")
             else:
                 # 使用收盘价
@@ -341,12 +341,12 @@ class WeightBasedStrategy:
         total_buy_value = 0
         successful_buys = 0
 
-        # 无论指数跌幅是否达到1%，都执行买入，只是价格不同
+        # 无论指数跌幅是否达到0.7%，都执行买入，只是价格不同
         for security, initial_amount in self.g.initial_half_pos.items():
-            # 如果指数跌幅超过1%，使用成本价*0.99作为买入价，否则使用收盘价
-            if low_decrease >= 0.01:
+            # 如果指数跌幅超过0.7%，使用成本价*0.993作为买入价，否则使用收盘价
+            if low_decrease >= 0.005:
                 cost_price = self.g.initial_prices.get(security, 0)
-                target_buy_price = cost_price * 0.99
+                target_buy_price = cost_price * 0.995
                 log.info(f"指数跌幅达{low_decrease:.2%}，使用目标买入价: {target_buy_price:.2f}")
             else:
                 target_buy_price = self._get_current_price(security, date)
