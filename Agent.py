@@ -5,6 +5,7 @@ from Performance_Analysis import PerformanceAnalysis  # 导入绩效分析类
 import pandas as pd
 import numpy as np
 import logging
+from datetime import datetime
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -153,6 +154,130 @@ class Agent():
         # 学习统计
         self.learning_updates = 0
         self.total_reward = 0.0
+
+        # 离线学习标记
+        self.offline_learned = False
+
+    def offline_learn(self, start_date='20160102', end_date='20180101'):
+        """
+        执行离线学习，使用指定日期范围内的历史数据训练价值函数
+        """
+        if self.offline_learned:
+            self.log.info("已完成离线学习，无需重复执行")
+            return
+
+        self.log.info(f"开始离线学习，时间范围: {start_date} 至 {end_date}")
+
+        try:
+            # 转换日期格式
+            start = pd.to_datetime(start_date, format='%Y%m%d')
+            end = pd.to_datetime(end_date, format='%Y%m%d')
+
+            # 获取日期范围内的所有交易日
+            date_range = pd.date_range(start=start, end=end)
+            trading_dates = [date for date in date_range if date in self.env.df['trade_date'].values]
+
+            if not trading_dates:
+                self.log.warning("离线学习期间没有找到有效的交易日期")
+                return
+
+            self.log.info(f"离线学习将使用 {len(trading_dates)} 个交易日数据")
+
+            # 初始化离线学习状态
+            self.pre_state = None
+            self.pre_action = None
+            temp_value = np.zeros_like(self.value)  # 临时价值函数，避免影响原始值
+            original_epsilon = self.Epsilon
+            original_alpha = self.Alpha
+
+            # 离线学习使用更高的探索率和学习率
+            self.Epsilon = 0.3  # 提高探索率
+            self.Alpha = 0.2  # 提高学习率
+
+            # 遍历每个交易日进行学习
+            for i in tqdm(range(len(trading_dates)), desc="离线学习进度"):
+                date = trading_dates[i]
+
+                # 获取当前状态
+                state = self.receive(date)
+                if state is None:
+                    continue
+
+                # 做出决策
+                action = self.decide(state)
+
+                # 如果不是第一个交易日，计算奖励并更新
+                if i > 0:
+                    # 获取前一天和当前天的指数数据计算奖励
+                    prev_date = trading_dates[i - 1]
+                    prev_index_data = self._get_index_data(prev_date)
+                    curr_index_data = self._get_index_data(date)
+
+                    if prev_index_data is None or curr_index_data is None:
+                        continue
+
+                    # 计算指数收益率作为奖励（简化版）
+                    index_return = (curr_index_data['close'] - prev_index_data['close']) / prev_index_data['close']
+
+                    # 基于动作调整奖励
+                    adjusted_reward = index_return if action == 1 else -index_return
+
+                    # 更新临时价值函数
+                    if self.pre_state is not None:
+                        pre_state_tuple = tuple(self.pre_state)
+                        current_value = temp_value[pre_state_tuple]
+                        new_value = current_value + self.Alpha * (adjusted_reward - current_value)
+                        temp_value[pre_state_tuple] = new_value
+                        self.learning_updates += 1
+                        self.total_reward += adjusted_reward
+
+                # 更新状态和动作
+                self.pre_state = state
+                self.pre_action = action
+
+            # 离线学习完成，将临时价值函数赋值给正式价值函数
+            self.value = temp_value
+            self.offline_learned = True
+
+            # 恢复原始参数
+            self.Epsilon = original_epsilon
+            self.Alpha = original_alpha
+
+            self.log.info("离线学习完成")
+            self.print_learning_status()
+
+        except Exception as e:
+            self.log.error(f"离线学习失败: {e}")
+        finally:
+            # 确保参数恢复
+            self.Epsilon = original_epsilon
+            self.Alpha = original_alpha
+
+    def _get_index_data(self, date):
+        """获取指定日期的指数数据（辅助离线学习）"""
+        try:
+            date_str = date.strftime('%Y%m%d')
+            data = self.env.get_discrete_data(date_str)
+            if 'error' in data:
+                return None
+
+            # 查找原始价格数据
+            target_data = self.env.df[self.env.df['trade_date'] == date]
+            if target_data.empty:
+                return None
+
+            row = target_data.iloc[0]
+            return {
+                'open': row['open'],
+                'high': row['high'],
+                'low': row['low'],
+                'close': row['close'],
+                'vol': row['vol'],
+                'amount': row['amount']
+            }
+        except Exception as e:
+            self.log.error(f"获取指数数据失败: {e}")
+            return None
 
     def decide(self, state):
         """决策函数 - 修复决策逻辑"""

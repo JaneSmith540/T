@@ -17,6 +17,6 @@ backtest_engine = BacktestEngine(
 
 # 3. 运行回测
 backtest_engine.run(
-    start_date=pd.to_datetime('2020-09-08'),
-    end_date=pd.to_datetime('2021-11-30')
+    start_date=pd.to_datetime('2022-02-01'),
+    end_date=pd.to_datetime('2022-03-07')
 )
